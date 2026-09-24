@@ -36,6 +36,11 @@ STUB = textwrap.dedent("""\
         # the unpacked rootfs has the default "alarm" user and no one else
         if [[ $1 == getent && $2 == passwd ]]; then [[ $3 == alarm ]] && exit 0; exit 2; fi
         if [[ $1 == systemctl && $2 == is-enabled && -f $STATE/disabled-$3 ]]; then exit 1; fi
+        if [[ $1 == systemctl && $2 == mask ]]; then
+          mkdir -p "$TARGET/etc/systemd/system"
+          for u in "${@:3}"; do [[ -f $STATE/mask-fails-$u ]] || ln -sfn /dev/null "$TARGET/etc/systemd/system/$u"; done
+        fi
+        if [[ $1 == systemd-machine-id-setup ]]; then echo 0123456789abcdef0123456789abcdef > "$TARGET/etc/machine-id"; fi
         if [[ $1 == bsdtar ]]; then mkdir -p "$TARGET/etc" "$TARGET/home/alarm"; echo "Arch Linux ARM" > "$TARGET/etc/arch-release"; fi
         if [[ $1 == pacman && $2 == -U ]]; then
           k=$TARGET/usr/lib/modules/6.8.12-1021-tegra
@@ -267,6 +272,32 @@ class InstallThorRootTests(unittest.TestCase):
         r = self.run_script("--write", "--confirm-serial", SERIAL)
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("nvpower", r.stderr)
+
+    def test_first_boot_does_not_wait_for_a_person(self):
+        self.write()
+        # a machine ID means systemd does not treat the first boot as "first boot" (no prompts, no preset-all)
+        self.assertTrue(any(c.startswith("systemd-machine-id-setup") for c in self.chroot_calls()))
+        self.assertEqual((self.target / "etc/vconsole.conf").read_text().strip(), "KEYMAP=us")
+        self.assertEqual(os.readlink(self.target / "etc/systemd/system/systemd-firstboot.service"), "/dev/null")
+
+    def test_uefi_variable_and_tpm_writers_are_masked(self):
+        self.write()
+        u = self.target / "etc/systemd/system"
+        for unit in ("systemd-hibernate-clear.service", "systemd-boot-random-seed.service",
+                     "systemd-boot-clear-sysfail.service", "systemd-boot-update.service",
+                     "systemd-tpm2-setup-early.service", "systemd-tpm2-setup.service", "systemd-pcrnvdone.service",
+                     "systemd-pcrmachine.service", "systemd-pcrphase.service", "systemd-pcrphase-sysinit.service",
+                     "systemd-pcrproduct.service", "systemd-repart.service",
+                     "sleep.target", "suspend.target", "hibernate.target", "hybrid-sleep.target",
+                     "suspend-then-hibernate.target"):
+            with self.subTest(unit=unit):
+                self.assertEqual(os.readlink(u / unit), "/dev/null")
+
+    def test_a_unit_that_did_not_mask_fails_the_install(self):
+        (self.state / "mask-fails-systemd-tpm2-setup.service").touch()
+        r = self.run_script("--write", "--confirm-serial", SERIAL)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("systemd-tpm2-setup.service", r.stderr)
 
     def test_units_enabled(self):
         self.write()
