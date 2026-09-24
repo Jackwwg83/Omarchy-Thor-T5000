@@ -12,9 +12,13 @@
 # efivarfs, with --removable --no-nvram: no UEFI variable can be written. Only the drive's ESP is
 # mounted read-write. `install` has grub-install write its removable loader into a staging directory
 # the firmware never looks at and keeps it as BOOTAA64.EFI.staged, so the drive is not bootable at any
-# point of an install, even an interrupted one; `publish` (taken with someone present, since a bad boot cannot be
-# recovered remotely) checks grub.cfg with grub-script-check, the environment block and the modules
-# the menu uses, then renames it. The menu comes from thor_boot.py. A dry run unless --write.
+# point of an install, even an interrupted one. The install's first step removes the ready record
+# (boot/grub/raytone-ready) and its last step writes it, with the sha256 of the staged loader, the menu
+# and the modules, so a failed or interrupted install cannot be published. `publish` (taken with
+# someone present, since a bad boot cannot be recovered remotely) verifies that record, checks
+# grub.cfg with grub-script-check, the environment block, the loader's embedded prefix and the
+# modules the menu uses, then renames the loader. The menu comes from thor_boot.py. A dry run
+# unless --write.
 # Tests: tests/test_install_thor_boot.py (RAYTONE_* variables exist for them).
 set -euo pipefail
 
@@ -56,6 +60,7 @@ LOADER=EFI/BOOT/BOOTAA64.EFI
 STAGING=raytone-staging                     # grub-install's --efi-directory, below the ESP root
 # The core image's embedded prefix: the menu on partition 1 (the ESP) of the disk GRUB booted from.
 PREFIX='(,gpt1)/boot/grub'
+READY=boot/grub/raytone-ready               # written last by a complete install; publish needs it
 # Modules the generated menu needs beyond GRUB's core image.
 MODULES=(normal part_gpt fat ext2 search_fs_uuid chain linux loadenv reboot sleep echo test)
 
@@ -100,11 +105,22 @@ for n in null zero urandom "$dev" "$ESP_DEV"; do
 done
 in_tools() { chroot "$tools" /usr/bin/env -i PATH=/usr/bin LANG=C.UTF-8 "$@"; }
 size_of() { stat -c %s "$1" 2>/dev/null || stat -f %z "$1"; }
-check_prefix() { grep -aqF "$PREFIX" "$1" || die "$(basename "$1") does not embed the prefix $PREFIX"; }
+# The prefix is stored as its own NUL-terminated string in the core image.
+check_prefix() {
+  LC_ALL=C tr '\0' '\n' < "$1" | grep -qxF "$PREFIX" || die "$(basename "$1") does not embed the prefix $PREFIX"
+}
+check_modules() {
+  local m
+  for m in "${MODULES[@]}"; do
+    [[ -f $ESP_MNT/boot/grub/arm64-efi/$m.mod ]] || die "GRUB module $m.mod is missing"
+  done
+}
 
 case $cmd in
   install)
-    # A drive published earlier stops being bootable before anything else changes.
+    # Nothing can be published until this install finishes; a drive published earlier stops being
+    # bootable before anything else changes.
+    rm -f "$ESP_MNT/$READY" && sync
     if [[ -e $ESP_MNT/$LOADER ]]; then
       mkdir -p "$ESP_MNT/EFI/BOOT" && mv -f "$ESP_MNT/$LOADER" "$ESP_MNT/$LOADER.staged" && sync
       echo "unpublished: $LOADER moved to $LOADER.staged"
@@ -123,18 +139,24 @@ case $cmd in
     in_tools grub-editenv "$BOOT/boot/grub/grubenv" create
     [[ $(size_of "$ESP_MNT/boot/grub/grubenv") == 1024 ]] || die "grubenv is not a 1024-byte environment block"
     [[ ! -e $ESP_MNT/$LOADER ]] || die "$LOADER exists after install; the drive must stay unbootable"
+    check_modules
+    sync
+    (cd "$ESP_MNT" && sha256sum "$LOADER.staged" boot/grub/grub.cfg boot/grub/arm64-efi/*.mod) > "$ESP_MNT/$READY.new"
+    mv -f "$ESP_MNT/$READY.new" "$ESP_MNT/$READY"
     sync
     echo "staged: $LOADER.staged, boot/grub/grub.cfg, boot/grub/grubenv. The drive is not bootable until 'publish'."
     ;;
   publish)
     [[ -f $ESP_MNT/$LOADER.staged ]] || die "nothing staged: $LOADER.staged is missing (run install)"
+    [[ -f $ESP_MNT/$READY ]] || die "not ready: the last install did not finish (no $READY); run install again"
+    changed=$(cd "$ESP_MNT" && sha256sum -c --quiet "$READY" 2>&1) ||
+      die "staged files changed since the last install ($READY does not match: $(echo "$changed" | tr '\n' ' ')); run install again"
     check_prefix "$ESP_MNT/$LOADER.staged"
     in_tools grub-script-check "$BOOT/boot/grub/grub.cfg" || die "grub-script-check rejects boot/grub/grub.cfg"
     [[ $(size_of "$ESP_MNT/boot/grub/grubenv") == 1024 ]] || die "grubenv is not a 1024-byte environment block"
-    for m in "${MODULES[@]}"; do
-      [[ -f $ESP_MNT/boot/grub/arm64-efi/$m.mod ]] || die "GRUB module $m.mod is missing"
-    done
+    check_modules
     mv -f "$ESP_MNT/$LOADER.staged" "$ESP_MNT/$LOADER"
+    rm -f "$ESP_MNT/$READY"
     sync
     echo "published: $LOADER. The firmware boots this drive first (BootOrder) and GRUB's default applies."
     ;;

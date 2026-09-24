@@ -46,7 +46,8 @@ STUB = textwrap.dedent("""\
           # a core image embeds its prefix; grub-install derives it from --boot-directory
           prefix='(,gpt1)/boot/grub'
           [[ -f $STATE/wrong-prefix ]] && prefix='(,gpt2)/boot/grub'
-          printf 'core\0%s\0' "$prefix" > "$efidir/EFI/BOOT/BOOTAA64.EFI"
+          [[ -f $STATE/longer-prefix ]] && prefix='(,gpt1)/boot/grub-other'
+          printf 'core\\0%s\\0' "$prefix" > "$efidir/EFI/BOOT/BOOTAA64.EFI"
           [[ -f $STATE/grub-install-fails ]] && exit 1
           for m in normal part_gpt fat ext2 search_fs_uuid chain linux loadenv reboot sleep echo test; do
             touch "$ESP_REAL/boot/grub/arm64-efi/$m.mod"
@@ -176,6 +177,49 @@ class InstallThorBootTests(unittest.TestCase):
         r = self.run_script("publish", "--write", "--confirm-serial", SERIAL)
         self.assertNotEqual(r.returncode, 0)
         self.assertFalse((self.esp / "EFI" / "BOOT" / "BOOTAA64.EFI").exists())
+
+    def test_install_refuses_a_prefix_that_only_starts_right(self):
+        (self.state / "longer-prefix").touch()
+        r = self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write",
+                            "--confirm-serial", SERIAL)
+        self.assertNotEqual(r.returncode, 0)
+
+    def install(self):
+        r = self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write",
+                            "--confirm-serial", SERIAL)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def assert_publish_refused(self):
+        r = self.run_script("publish", "--write", "--confirm-serial", SERIAL)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertFalse((self.esp / "EFI" / "BOOT" / "BOOTAA64.EFI").exists())
+        return r
+
+    def test_a_failed_reinstall_cannot_be_published(self):
+        self.install()
+        (self.state / "grub-install-fails").touch()
+        r = self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write",
+                            "--confirm-serial", SERIAL)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertTrue((self.esp / "EFI" / "BOOT" / "BOOTAA64.EFI.staged").exists())  # the old one is still there
+        self.assertIn("did not finish", self.assert_publish_refused().stderr)
+
+    def test_publish_refuses_files_changed_after_install(self):
+        self.install()
+        cfg = self.esp / "boot" / "grub" / "grub.cfg"
+        cfg.write_text(cfg.read_text() + "\n# edited\n")
+        self.assert_publish_refused()
+
+    def test_publish_refuses_a_module_changed_after_install(self):
+        self.install()
+        (self.esp / "boot" / "grub" / "arm64-efi" / "linux.mod").write_bytes(b"other")
+        self.assert_publish_refused()
+
+    def test_publish_consumes_the_ready_record(self):
+        self.install()
+        r = self.run_script("publish", "--write", "--confirm-serial", SERIAL)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse((self.esp / "boot" / "grub" / "raytone-ready").exists())
 
     def test_install_over_a_published_drive_unpublishes_it_first(self):
         self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write",
