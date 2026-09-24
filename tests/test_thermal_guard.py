@@ -13,8 +13,18 @@ STUB = textwrap.dedent("""\
     #!/bin/sh
     echo "$(basename "$0") $*" >> "$STATE/calls"
     case "$(basename "$0") $*" in
-      "systemctl is-active nvfancontrol") cat "$STATE/fan-state" ;;
-      "nvpmodel -q") [ -f "$STATE/nvpmodel-hangs" ] && sleep 30; echo "NV Power Mode: MAXN" ;;
+      "systemctl is-active nvfancontrol")
+        # the SoC heats up while the guard keeps running
+        if [ -f "$STATE/heat-after-first-check" ]; then
+          rm "$STATE/heat-after-first-check"; echo 97000 > "$RAYTONE_SYS/class/thermal/thermal_zone1/temp"
+        fi
+        cat "$STATE/fan-state" ;;
+      "nvpmodel -q")
+        [ -f "$STATE/nvpmodel-ignores-term" ] && trap '' TERM
+        [ -f "$STATE/nvpmodel-hangs" ] && sleep 30
+        echo "NV Power Mode: MAXN" ;;
+      "systemctl reboot") [ -f "$STATE/reboot-refused" ] && exit 1 ;;
+      "systemctl reboot --force") [ -f "$STATE/force-refused" ] && exit 1 ;;
     esac
     exit 0
     """)
@@ -70,12 +80,34 @@ class ThermalGuardTests(unittest.TestCase):
         self.assertIn("systemctl reboot", calls)
         self.assertNotIn("nvpmodel -q", calls[:calls.index("systemctl reboot")])
 
-    def test_later_overheating_is_caught(self):
+    def test_later_overheating_is_caught_by_the_same_process(self):
+        (self.state / "heat-after-first-check").touch()
+        r = self.run_guard(checks=2)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        calls = self.calls()
+        self.assertEqual(calls.count("systemctl is-active nvfancontrol"), 1)  # hot: no query needed
+        self.assertIn("systemctl reboot", calls)
+
+    def test_a_refused_reboot_is_forced(self):
+        self.zones(52000, 96000)
+        (self.state / "reboot-refused").touch()
         self.run_guard(checks=1)
-        self.assertNotIn("systemctl reboot", self.calls())
-        self.zones(52000, 97000)
+        calls = self.calls()
+        self.assertLess(calls.index("systemctl reboot"), calls.index("systemctl reboot --force"))
+        self.assertNotIn("systemctl reboot --force --force", calls)
+
+    def test_a_refused_forced_reboot_reboots_immediately(self):
+        self.zones(52000, 96000)
+        (self.state / "reboot-refused").touch()
+        (self.state / "force-refused").touch()
         self.run_guard(checks=1)
-        self.assertIn("systemctl reboot", self.calls())
+        self.assertIn("systemctl reboot --force --force", self.calls())
+
+    def test_the_guard_keeps_watching_after_requesting_a_reboot(self):
+        self.zones(52000, 96000)
+        r = self.run_guard(checks=3)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.calls().count("systemctl reboot"), 3)
 
     def test_fan_control_not_running_reboots(self):
         (self.state / "fan-state").write_text("failed\n")
@@ -90,6 +122,13 @@ class ThermalGuardTests(unittest.TestCase):
 
     def test_a_hanging_diagnostic_does_not_stall_the_guard(self):
         (self.state / "nvpmodel-hangs").touch()
+        r = self.run_guard(checks=2, timeout=25)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.calls().count("systemctl is-active nvfancontrol"), 2)
+
+    def test_a_diagnostic_that_ignores_term_is_killed(self):
+        (self.state / "nvpmodel-hangs").touch()
+        (self.state / "nvpmodel-ignores-term").touch()
         r = self.run_guard(checks=2, timeout=25)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.calls().count("systemctl is-active nvfancontrol"), 2)
