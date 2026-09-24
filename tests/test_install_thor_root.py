@@ -159,7 +159,10 @@ class InstallThorRootTests(unittest.TestCase):
         self.write()
         t = self.target
         self.assertEqual((t / "etc/hostname").read_text().strip(), "raytone-thor")
-        self.assertIn("PARTUUID=ca5a56c6-4a4b-4e02-8183-ff166514ae3b / ext4", (t / "etc/fstab").read_text())
+        fstab = (t / "etc/fstab").read_text()
+        self.assertIn("PARTUUID=ca5a56c6-4a4b-4e02-8183-ff166514ae3b / ext4", fstab)
+        # the running system cannot write UEFI variables (systemd-remount-fs applies this)
+        self.assertIn("efivarfs /sys/firmware/efi/efivars efivarfs ro,nosuid,nodev,noexec 0 0", fstab)
         self.assertEqual(os.readlink(t / "etc/localtime"), "/usr/share/zoneinfo/Asia/Shanghai")
         self.assertIn("LANG=en_US.UTF-8", (t / "etc/locale.conf").read_text())
         self.assertTrue((t / "var/log/journal").is_dir())
@@ -174,7 +177,12 @@ class InstallThorRootTests(unittest.TestCase):
             self.assertIn("systemctl --no-block reboot", text)
         self.assertIn("OnBootSec=20min", (u / "raytone-deadman.timer").read_text())
         self.assertIn("/run/raytone-keep", (u / "raytone-deadman.service").read_text())
-        self.assertIn("boots.log", (u / "raytone-boot-marker.service").read_text())
+        marker = (u / "raytone-boot-marker.service").read_text()
+        self.assertIn("boots.log", marker)
+        self.assertIn("uname -v", marker)  # tells NVIDIA's kernel from the vendor build
+        reboot = (u / "reboot.target.d/raytone-bounded.conf").read_text()
+        self.assertIn("JobTimeoutSec=5min", reboot)
+        self.assertIn("JobTimeoutAction=reboot-force", reboot)
 
     def test_network_and_ssh_come_from_the_jetpack_host(self):
         self.write()
@@ -242,8 +250,14 @@ class InstallThorRootTests(unittest.TestCase):
         self.assertIn("DefaultDependencies=no", (u / "raytone-deadman.timer").read_text())
         self.assertIn("DefaultDependencies=no", (u / "raytone-boot-start.service").read_text())
         guard = (u / "raytone-thermal-guard.service").read_text()
-        self.assertIn("nvfancontrol", guard)
-        self.assertIn("reboot", guard)
+        self.assertIn("ExecStart=/usr/lib/raytone/thermal-guard", guard)
+        self.assertIn("Restart=on-failure", guard)
+        # not ordered after the services it watches, so a hanging start cannot hold it back
+        self.assertNotIn("After=nvfancontrol", guard)
+        self.assertNotIn("Type=oneshot", guard)
+        installed = self.target / "usr/lib/raytone/thermal-guard"
+        self.assertEqual(installed.read_text(), (ROOT / "scripts/thor-rootfs/thermal-guard").read_text())
+        self.assertTrue(os.access(installed, os.X_OK))
         enable = " ".join(c for c in self.chroot_calls() if c.startswith("systemctl enable"))
         self.assertIn("raytone-thermal-guard", enable)
         self.assertIn("raytone-boot-start", enable)
@@ -253,12 +267,6 @@ class InstallThorRootTests(unittest.TestCase):
         r = self.run_script("--write", "--confirm-serial", SERIAL)
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("nvpower", r.stderr)
-
-    def test_thermal_guard_fails_when_no_sensor_reads(self):
-        self.write()
-        guard = (self.target / "usr/lib/raytone/thermal-guard").read_text()
-        self.assertIn("read=0", guard)
-        self.assertIn('[ "$read" -eq 0 ]', guard)
 
     def test_units_enabled(self):
         self.write()

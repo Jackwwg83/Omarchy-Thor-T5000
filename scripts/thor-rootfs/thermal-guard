@@ -1,0 +1,46 @@
+#!/bin/sh
+# RaytoneOS bring-up thermal guard, installed as /usr/lib/raytone/thermal-guard on the Thor USB drive.
+# After a grace period for start-up, checks every 30 s and reboots (back to the GRUB default,
+# JetPack) when nvfancontrol is not running, no thermal zone can be read, or any zone is at or
+# above 95 C. The decision comes first; diagnostics are logged afterwards, each with a timeout, so
+# a hanging query cannot hold the guard back.
+# RAYTONE_* variables exist for tests/test_thermal_guard.py.
+sys=${RAYTONE_SYS:-/sys}
+log=${RAYTONE_GUARD_LOG:-/var/lib/raytone/thermal.log}
+grace=${RAYTONE_GUARD_GRACE:-90}
+interval=${RAYTONE_GUARD_INTERVAL:-30}
+checks=${RAYTONE_GUARD_CHECKS:-0}   # 0: run until shutdown
+limit=95000
+
+mkdir -p "$(dirname "$log")"
+sleep "$grace"
+n=0
+while :; do
+  max=0 read=0
+  for z in "$sys"/class/thermal/thermal_zone*/temp; do
+    t=$(cat "$z" 2>/dev/null) || continue
+    case $t in '' | *[!0-9-]*) continue ;; esac
+    read=$((read + 1))
+    [ "$t" -gt "$max" ] && max=$t
+  done
+  state=$(timeout 10 systemctl is-active nvfancontrol 2>/dev/null)
+  rpm=-
+  for h in "$sys"/class/hwmon/hwmon*; do
+    [ "$(cat "$h/name" 2>/dev/null)" = pwm_tach ] && rpm=$(cat "$h/rpm" 2>/dev/null)
+  done
+  line="$(date -Is) nvfancontrol=$state zones_read=$read max_mC=$max fan_rpm=$rpm"
+  if [ "$state" != active ] || [ "$read" -eq 0 ] || [ "$max" -ge "$limit" ]; then
+    echo "$line thermal guard: rebooting" >> "$log"
+    systemctl reboot
+    echo "$line $(timeout 5 nvpmodel -q 2>/dev/null | tr '\n' ' ')" >> "$log"
+    exit 0
+  fi
+  # Full diagnostics on the first check and then every 10 minutes.
+  if [ $((n % 20)) -eq 0 ]; then
+    line="$line $(timeout 5 nvpmodel -q 2>/dev/null | tr '\n' ' ')"
+  fi
+  echo "$line" >> "$log"
+  n=$((n + 1))
+  [ "$checks" -gt 0 ] && [ "$n" -ge "$checks" ] && exit 0
+  sleep "$interval"
+done

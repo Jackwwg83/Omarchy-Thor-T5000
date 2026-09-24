@@ -17,9 +17,11 @@
 #
 # Unattended safety, for a first boot nobody watches: emergency and rescue mode reboot instead of
 # waiting at a shell, a dead-man timer reboots after 20 minutes unless /run/raytone-keep exists,
-# and a boot marker records every boot in /var/lib/raytone/boots.log. NVIDIA's systemd watchdog
-# setting (RuntimeWatchdogSec=120) comes with raytone-thor-core. Nothing that writes UEFI variables
-# (efibootmgr, grub, fwupd) is installed. A dry run unless --write.
+# a thermal guard (scripts/thor-rootfs/thermal-guard) reboots when fan control stops or the SoC runs
+# hot, a reboot that stalls is forced after 5 minutes, and a boot marker records every boot in
+# /var/lib/raytone/boots.log. NVIDIA's systemd watchdog setting (RuntimeWatchdogSec=120) comes with
+# raytone-thor-core. The running system mounts efivarfs read-only, and nothing that writes UEFI
+# variables (efibootmgr, grub, fwupd) is installed. A dry run unless --write.
 # Tests: tests/test_install_thor_root.py (RAYTONE_* variables exist for them).
 set -euo pipefail
 
@@ -179,7 +181,12 @@ in_target gpgconf --homedir /etc/pacman.d/gnupg --kill all || true
 # 4. System files.
 echo "$HOSTNAME_" > "$MNT/etc/hostname"
 printf '127.0.0.1 localhost\n::1 localhost\n127.0.1.1 %s.localdomain %s\n' "$HOSTNAME_" "$HOSTNAME_" > "$MNT/etc/hosts"
-printf '# RaytoneOS Thor USB drive\nPARTUUID=%s / ext4 defaults,noatime 0 1\n' "$root_partuuid" > "$MNT/etc/fstab"
+{
+  echo "# RaytoneOS Thor USB drive"
+  echo "PARTUUID=$root_partuuid / ext4 defaults,noatime 0 1"
+  echo "# No UEFI variable writes from this system (systemd-remount-fs applies the options)."
+  echo "efivarfs /sys/firmware/efi/efivars efivarfs ro,nosuid,nodev,noexec 0 0"
+} > "$MNT/etc/fstab"
 if [[ -L $HOST_ETC/localtime ]]; then ln -sfn "$(readlink "$HOST_ETC/localtime")" "$MNT/etc/localtime"
 else cp -f "$HOST_ETC/localtime" "$MNT/etc/localtime"; fi
 [[ -f $MNT/etc/locale.gen ]] && sed -i 's/^#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' "$MNT/etc/locale.gen"
@@ -225,6 +232,13 @@ Before=shutdown.target
 Type=oneshot
 ExecStart=/bin/sh -c 'test -e /run/raytone-keep || systemctl reboot'
 EOF
+# A normal reboot that stalls (a unit that will not stop) is forced after 5 minutes instead of 30.
+mkdir -p "$units/reboot.target.d"
+cat > "$units/reboot.target.d/raytone-bounded.conf" <<'EOF'
+[Unit]
+JobTimeoutSec=5min
+JobTimeoutAction=reboot-force
+EOF
 cat > "$units/raytone-boot-start.service" <<'EOF'
 [Unit]
 Description=RaytoneOS bring-up: record that this boot reached a writable root
@@ -239,37 +253,18 @@ ExecStart=/bin/sh -c 'mkdir -p /var/lib/raytone; echo "$(date -Is) start $(uname
 [Install]
 WantedBy=sysinit.target
 EOF
-# Thermal guard: without a running fan controller, or at 95 C, go back to JetPack.
+# Thermal guard: without a running fan controller, or at 95 C, go back to JetPack. Not ordered after
+# the services it watches, so a start that hangs cannot hold it back.
 mkdir -p "$MNT/usr/lib/raytone"
-cat > "$MNT/usr/lib/raytone/thermal-guard" <<'EOF'
-#!/bin/sh
-# RaytoneOS bring-up: 90 s after start-up, reboot if nvfancontrol is not running or any thermal
-# zone is at or above 95 C; log the readings either way.
-sleep 90
-log=/var/lib/raytone/thermal.log
-max=0
-read=0
-for z in /sys/class/thermal/thermal_zone*/temp; do
-  t=$(cat "$z" 2>/dev/null) || continue
-  read=$((read + 1))
-  [ "$t" -gt "$max" ] && max=$t
-done
-state=$(systemctl is-active nvfancontrol)
-echo "$(date -Is) nvfancontrol=$state zones_read=$read max_mC=$max $(nvpmodel -q 2>/dev/null | tr '\n' ' ')" >> "$log"
-if [ "$state" != active ] || [ "$read" -eq 0 ] || [ "$max" -ge 95000 ]; then
-  echo "$(date -Is) thermal guard: rebooting" >> "$log"
-  systemctl reboot
-fi
-EOF
+cp -f "$HERE/thor-rootfs/thermal-guard" "$MNT/usr/lib/raytone/thermal-guard"
 chmod 0755 "$MNT/usr/lib/raytone/thermal-guard"
 cat > "$units/raytone-thermal-guard.service" <<'EOF'
 [Unit]
-Description=RaytoneOS bring-up: reboot if fan control is not running or the SoC runs hot
-After=nvfancontrol.service nvpmodel.service
+Description=RaytoneOS bring-up: reboot if fan control stops or the SoC runs hot
 
 [Service]
-Type=oneshot
 ExecStart=/usr/lib/raytone/thermal-guard
+Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
@@ -281,7 +276,7 @@ After=multi-user.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c 'mkdir -p /var/lib/raytone; echo "$(date -Is) $(uname -r) $(cat /proc/cmdline)" >> /var/lib/raytone/boots.log'
+ExecStart=/bin/sh -c 'mkdir -p /var/lib/raytone; echo "$(date -Is) $(uname -r) $(uname -v) $(cat /proc/cmdline)" >> /var/lib/raytone/boots.log'
 
 [Install]
 WantedBy=multi-user.target
