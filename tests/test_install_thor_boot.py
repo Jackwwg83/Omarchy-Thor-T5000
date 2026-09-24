@@ -34,10 +34,15 @@ STUB = textwrap.dedent("""\
         shift  # tools root
         if [[ $1 == /usr/bin/env ]]; then shift; [[ $1 == -i ]] && shift; while [[ $1 == *=* ]]; do shift; done; fi
         echo "in-chroot $*" >> "$STATE/calls"
-        if [[ $1 == grub-install ]]; then
+        if [[ $1 == grub-script-check ]]; then
+          [[ -f $STATE/script-check-fails ]] && exit 1
+        elif [[ $1 == grub-install ]]; then
           esp=$(printf '%s\\n' "$@" | sed -n 's/^--efi-directory=//p')
           mkdir -p "$ESP_REAL/EFI/BOOT" "$ESP_REAL/boot/grub/arm64-efi"
-          touch "$ESP_REAL/EFI/BOOT/BOOTAA64.EFI" "$ESP_REAL/boot/grub/arm64-efi/normal.mod"
+          touch "$ESP_REAL/EFI/BOOT/BOOTAA64.EFI"
+          for m in normal part_gpt fat ext2 search_fs_uuid chain linux loadenv reboot sleep echo test; do
+            touch "$ESP_REAL/boot/grub/arm64-efi/$m.mod"
+          done
         elif [[ $1 == grub-editenv ]]; then
           f=$2; f=${f/\\/mnt\\/raytone-esp/$ESP_REAL}
           case $3 in
@@ -61,7 +66,7 @@ class InstallThorBootTests(unittest.TestCase):
                   self.tools / "usr" / "bin", self.tools / "mnt" / "raytone-esp"):
             d.mkdir(parents=True)
         (self.tools / "usr" / "bin" / "grub-install").touch()
-        for tool in ("lsblk", "findmnt", "swapon", "blkid", "mount", "umount", "chroot", "udevadm"):
+        for tool in ("lsblk", "findmnt", "swapon", "blkid", "mount", "umount", "chroot", "udevadm", "sync"):
             p = self.bin / tool
             p.write_text(STUB)
             p.chmod(0o755)
@@ -72,7 +77,9 @@ class InstallThorBootTests(unittest.TestCase):
         self.link = dev / "disk" / "by-id" / f"usb-JZAO_USB3.2_Gen1_{SERIAL}-0:0"
         self.link.symlink_to("../../sdz")
         (self.state / "disk").write_text(f"disk usb {SERIAL} {SIZE}\n")
-        (self.state / "parts").write_text("sdz1 RAYTONE_ESP vfat\nsdz2 RAYTONE_ROOT ext4\n")
+        (self.state / "parts").write_text("sdz\nsdz1 RAYTONE_ESP vfat\nsdz2 RAYTONE_ROOT ext4\n")
+        self.rules = t / "rules.d"
+        self.rules.mkdir()
         self.entries = t / "entries.json"
         self.entries.write_text(json.dumps([{"id": "jetpack-grub", "title": "JetPack kernel via GRUB",
                                              "fs_uuid": "1111-aaaa", "kernel": "/boot/Image",
@@ -84,7 +91,8 @@ class InstallThorBootTests(unittest.TestCase):
     def run_script(self, *args):
         env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}", STATE=str(self.state),
                    RAYTONE_SYS=str(self.sys), RAYTONE_SKIP_ROOT_CHECK="1", RAYTONE_NO_UNSHARE="1",
-                   RAYTONE_ESP_MOUNT=str(self.esp), ESP_REAL=str(self.esp))
+                   RAYTONE_ESP_MOUNT=str(self.esp), ESP_REAL=str(self.esp),
+                   RAYTONE_UDEV_RULES=str(self.rules))
         return subprocess.run(["bash", str(SCRIPT), *args, "--disk", str(self.link), "--serial", SERIAL,
                                "--tools-root", str(self.tools)], env=env, capture_output=True, text=True)
 
@@ -93,7 +101,7 @@ class InstallThorBootTests(unittest.TestCase):
         return f.read_text().splitlines() if f.exists() else []
 
     def test_dry_run_prints_the_menu_and_writes_nothing(self):
-        r = self.run_script("install", "--entries", str(self.entries))
+        r = self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("dry run", r.stdout)
         self.assertIn("--id jetpack-grub", r.stdout)
@@ -101,18 +109,18 @@ class InstallThorBootTests(unittest.TestCase):
 
     def test_refuses_wrong_partition_layout(self):
         (self.state / "parts").write_text("sdz1 EFI vfat\nsdz2 RAYTONE_ROOT ext4\n")
-        r = self.run_script("install", "--entries", str(self.entries))
+        r = self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("RAYTONE_ESP", r.stderr)
 
     def test_refuses_a_serial_mismatch(self):
         (self.state / "disk").write_text(f"disk usb 1111 {SIZE}\n")
-        r = self.run_script("install", "--entries", str(self.entries), "--write", "--confirm-serial", SERIAL)
+        r = self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write", "--confirm-serial", SERIAL)
         self.assertNotEqual(r.returncode, 0)
         self.assertFalse([c for c in self.calls() if c.startswith("chroot")])
 
     def test_write_installs_grub_without_nvram_and_without_efivars(self):
-        r = self.run_script("install", "--entries", str(self.entries), "--write", "--confirm-serial", SERIAL)
+        r = self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write", "--confirm-serial", SERIAL)
         self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
         grub = [c for c in self.calls() if c.startswith("in-chroot grub-install")]
         self.assertEqual(len(grub), 1)
@@ -122,10 +130,53 @@ class InstallThorBootTests(unittest.TestCase):
         self.assertFalse([m for m in mounts if "efivarfs" in m])
         self.assertTrue([m for m in mounts if "sysfs" in m and "ro" in m], mounts)
 
+    def test_install_leaves_the_drive_unbootable_until_published(self):
+        r = self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write",
+                            "--confirm-serial", SERIAL)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse((self.esp / "EFI" / "BOOT" / "BOOTAA64.EFI").exists())
+        self.assertTrue((self.esp / "EFI" / "BOOT" / "BOOTAA64.EFI.staged").exists())
+
+    def test_publish_checks_the_menu_then_makes_the_drive_bootable(self):
+        self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write",
+                        "--confirm-serial", SERIAL)
+        r = self.run_script("publish", "--write", "--confirm-serial", SERIAL)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(any(c.startswith("in-chroot grub-script-check") for c in self.calls()))
+        self.assertTrue((self.esp / "EFI" / "BOOT" / "BOOTAA64.EFI").exists())
+        self.assertFalse((self.esp / "EFI" / "BOOT" / "BOOTAA64.EFI.staged").exists())
+
+    def test_publish_refuses_a_menu_grub_rejects(self):
+        self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write",
+                        "--confirm-serial", SERIAL)
+        (self.state / "script-check-fails").touch()
+        r = self.run_script("publish", "--write", "--confirm-serial", SERIAL)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("grub-script-check", r.stderr)
+        self.assertFalse((self.esp / "EFI" / "BOOT" / "BOOTAA64.EFI").exists())
+
+    def test_publish_refuses_missing_modules(self):
+        self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write",
+                        "--confirm-serial", SERIAL)
+        (self.esp / "boot" / "grub" / "arm64-efi" / "chain.mod").unlink()
+        r = self.run_script("publish", "--write", "--confirm-serial", SERIAL)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("chain.mod", r.stderr)
+
+    def test_automount_is_suppressed_before_the_checks_and_restored(self):
+        r = self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write",
+                            "--confirm-serial", SERIAL)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        calls = self.calls()
+        reload = next(i for i, c in enumerate(calls) if c.startswith("udevadm control --reload"))
+        first_mount = next(i for i, c in enumerate(calls) if c.startswith("mount "))
+        self.assertLess(reload, first_mount)
+        self.assertEqual(list(self.rules.iterdir()), [])
+
     def test_write_leaves_grub_cfg_and_an_empty_one_shot_on_the_esp(self):
-        self.run_script("install", "--entries", str(self.entries), "--write", "--confirm-serial", SERIAL)
+        self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write", "--confirm-serial", SERIAL)
         cfg = (self.esp / "boot" / "grub" / "grub.cfg").read_text()
-        self.assertIn('set default="firmware-next"', cfg)
+        self.assertIn('set default="jetpack-grub"', cfg)
         self.assertIn("--id jetpack-grub", cfg)
         self.assertEqual((self.esp / "boot" / "grub" / "grubenv").stat().st_size, 1024)
 
@@ -135,13 +186,13 @@ class InstallThorBootTests(unittest.TestCase):
         self.assertIn('set default="jetpack-grub"', r.stdout)
 
     def test_arm_once_sets_next_entry_and_reads_it_back(self):
-        self.run_script("install", "--entries", str(self.entries), "--write", "--confirm-serial", SERIAL)
+        self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write", "--confirm-serial", SERIAL)
         r = self.run_script("arm-once", "--entry", "jetpack-grub", "--write", "--confirm-serial", SERIAL)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("next_entry=jetpack-grub", (self.esp / "boot" / "grub" / "grubenv").read_text())
 
     def test_arm_once_refuses_an_entry_not_in_the_menu(self):
-        self.run_script("install", "--entries", str(self.entries), "--write", "--confirm-serial", SERIAL)
+        self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write", "--confirm-serial", SERIAL)
         r = self.run_script("arm-once", "--entry", "arch", "--write", "--confirm-serial", SERIAL)
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("not in grub.cfg", r.stderr)

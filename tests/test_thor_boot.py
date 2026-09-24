@@ -45,68 +45,75 @@ class CmdlineTests(unittest.TestCase):
 
 class GrubCfgTests(unittest.TestCase):
     def entries(self):
-        return [tb.Entry(id="arch", title="RaytoneOS Arch (test boot)", fs_uuid="1111-aaaa",
-                         kernel="/boot/Image", initrd="/boot/initramfs-raytone-thor.img", cmdline="root=PARTUUID=x rw")]
+        return [
+            tb.Entry(id="jetpack-nvme", title="JetPack on the internal NVMe (its own boot loader)", fs_uuid="2BBE-D8EC",
+                     kernel=None, initrd=None, cmdline="", chainload="/EFI/BOOT/BOOTAA64.efi"),
+            tb.Entry(id="arch", title="RaytoneOS Arch (test boot)", fs_uuid="51cac00d-1733-4097-a9dc-82f35a4a1c8f",
+                     kernel="/boot/Image", initrd="/boot/initramfs-raytone-thor.img", cmdline="root=PARTUUID=x rw"),
+        ]
 
-    def test_default_hands_back_to_the_firmware(self):
-        cfg = tb.grub_cfg(self.entries())
-        self.assertIn('set default="firmware-next"', cfg)
-        self.assertIn('set fallback="firmware-next"', cfg)
-        block = cfg[cfg.index('--id firmware-next'):]
-        self.assertIn("exit 1", block.split("}")[0])
+    def cfg(self, default="jetpack-nvme"):
+        return tb.grub_cfg(self.entries(), default=default)
 
-    def test_one_shot_entry_is_cleared_before_it_boots(self):
-        cfg = tb.grub_cfg(self.entries())
-        load, use, clear, save = (cfg.index(s) for s in (
-            "load_env", 'set default="${next_entry}"', "set next_entry=", "save_env"))
-        self.assertLess(load, use)
-        self.assertLess(use, clear)
-        self.assertLess(clear, save)
-        self.assertLess(save, cfg.index("menuentry"))
+    def block(self, cfg, entry_id):
+        return cfg.split(f"--id {entry_id} {{")[1].split("\n}")[0]
 
-    def test_entries_find_their_filesystem_by_uuid(self):
-        cfg = tb.grub_cfg(self.entries())
-        self.assertIn("search --no-floppy --fs-uuid --set=root 1111-aaaa", cfg)
-        self.assertIn("linux /boot/Image root=PARTUUID=x rw", cfg)
-        self.assertIn("initrd /boot/initramfs-raytone-thor.img", cfg)
+    def test_default_is_explicit_and_must_be_a_real_entry(self):
+        self.assertIn('set default="jetpack-nvme"', self.cfg())
+        for bad in ("missing", "retry-reboot", "uefi-menu"):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                self.cfg(default=bad)
+
+    def test_fallback_is_the_number_of_the_reboot_entry(self):
+        cfg = self.cfg()
+        ids = [line.split("--id ")[1].split()[0] for line in cfg.splitlines() if line.startswith("menuentry")]
+        self.assertIn(f'set fallback="{ids.index("retry-reboot")}"', cfg)
+        self.assertIn("reboot", self.block(cfg, "retry-reboot"))
+
+    def test_exit_is_only_a_manual_entry(self):
+        cfg = self.cfg()
+        self.assertIn("exit", self.block(cfg, "uefi-menu"))
+        self.assertEqual(cfg.count("exit"), 1)
+
+    def test_one_shot_switches_the_default_only_after_save_env_succeeds(self):
+        cfg = self.cfg()
+        self.assertIn("load_env -f $prefix/grubenv next_entry", cfg)
+        order = [cfg.index(s) for s in ('set try_entry="${next_entry}"', "set next_entry=",
+                                        "if save_env -f $prefix/grubenv next_entry; then",
+                                        'set default="${try_entry}"', "menuentry")]
+        self.assertEqual(order, sorted(order))
+
+    def test_entries_boot_only_after_their_filesystem_is_found(self):
+        cfg = self.cfg()
+        for entry_id in ("arch", "jetpack-nvme"):
+            b = self.block(cfg, entry_id)
+            self.assertLess(b.index("if search --no-floppy --fs-uuid --set=root"), b.index("boot\n"))
+            self.assertLess(b.index("fi"), b.index("reboot"))
+        self.assertIn("linux /boot/Image root=PARTUUID=x rw", self.block(cfg, "arch"))
+        self.assertIn("initrd /boot/initramfs-raytone-thor.img", self.block(cfg, "arch"))
+        self.assertIn("chainloader /EFI/BOOT/BOOTAA64.efi", self.block(cfg, "jetpack-nvme"))
 
     def test_never_uses_devicetree(self):
-        self.assertNotIn("devicetree", tb.grub_cfg(self.entries()))
+        self.assertNotIn("devicetree", self.cfg())
 
     def test_entry_ids_are_unique_and_not_reserved(self):
         with self.assertRaises(ValueError):
-            tb.grub_cfg(self.entries() * 2)
+            tb.grub_cfg(self.entries() * 2, default="arch")
         with self.assertRaises(ValueError):
-            tb.grub_cfg([tb.Entry(id="firmware-next", title="x", fs_uuid="1", kernel="/k", initrd=None, cmdline="")])
-
-
-class ChainloadTests(unittest.TestCase):
-    def menu(self, default="jetpack-nvme"):
-        return tb.grub_cfg([
-            tb.Entry(id="jetpack-nvme", title="JetPack on the internal NVMe (its own boot loader)", fs_uuid="ABCD-1234",
-                     kernel=None, initrd=None, cmdline="", chainload="/EFI/BOOT/BOOTAA64.efi"),
-            tb.Entry(id="jetpack-grub", title="JetPack kernel via GRUB", fs_uuid="1111-aaaa",
-                     kernel="/boot/Image", initrd="/boot/initrd", cmdline="root=PARTUUID=x rw"),
-        ], default=default)
-
-    def test_chainload_entry_loads_the_other_boot_loader(self):
-        block = self.menu().split("--id jetpack-nvme")[1].split("}")[0]
-        self.assertIn("search --no-floppy --fs-uuid --set=root ABCD-1234", block)
-        self.assertIn("chainloader /EFI/BOOT/BOOTAA64.efi", block)
-        self.assertNotIn("linux ", block)
-
-    def test_default_can_be_an_entry_and_fallback_stays_the_firmware(self):
-        cfg = self.menu()
-        self.assertIn('set default="jetpack-nvme"', cfg)
-        self.assertIn('set fallback="firmware-next"', cfg)
-
-    def test_default_must_exist(self):
-        with self.assertRaises(ValueError):
-            self.menu(default="arch")
+            tb.grub_cfg([tb.Entry(id="retry-reboot", title="x", fs_uuid="1234-ABCD", kernel="/k", initrd=None,
+                                  cmdline="")], default="retry-reboot")
 
     def test_an_entry_needs_a_kernel_or_a_chainload_target(self):
         with self.assertRaises(ValueError):
-            tb.grub_cfg([tb.Entry(id="x", title="x", fs_uuid="1", kernel=None, initrd=None, cmdline="")])
+            tb.grub_cfg([tb.Entry(id="x", title="x", fs_uuid="1234-ABCD", kernel=None, initrd=None, cmdline="")],
+                        default="x")
+
+    def test_rendered_fields_are_validated(self):
+        good = dict(id="arch", title="Arch", fs_uuid="1234-ABCD", kernel="/boot/Image", initrd=None, cmdline="rw")
+        for field, bad in (("id", "Arch Linux"), ("title", 'x" --id evil'), ("fs_uuid", "1234 --set"),
+                           ("kernel", "/boot/Image; reboot"), ("initrd", "/boot/in rd"), ("cmdline", "rw $(x)")):
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                tb.grub_cfg([tb.Entry(**dict(good, **{field: bad}))], default=good["id"] if field != "id" else bad)
 
 
 class GrubInstallArgsTests(unittest.TestCase):

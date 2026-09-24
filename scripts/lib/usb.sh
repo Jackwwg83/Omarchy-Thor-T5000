@@ -41,3 +41,21 @@ not_in_use() {
   return 0
 }
 
+
+RULES=${RAYTONE_UDEV_RULES:-/run/udev/rules.d}
+automount_rule=''
+
+suppress_automount() { # keep desktop automounters off the target while the tools work on it
+  automount_rule=$RULES/90-raytone-noauto-$serial.rules
+  mkdir -p "$RULES"
+  echo "ENV{ID_SERIAL_SHORT}==\"$serial\", ENV{UDISKS_IGNORE}=\"1\", ENV{UDISKS_AUTO}=\"0\"" > "$automount_rule"
+  echo "automount suppressed: $(cat "$automount_rule")"
+  udevadm control --reload
+  udevadm trigger --action=change "$dev" || true   # apply the rule to the device already present
+  udevadm settle || true
+}
+
+restore_automount() {
+  [[ -n $automount_rule ]] && rm -f "$automount_rule"
+  udevadm control --reload || true
+}

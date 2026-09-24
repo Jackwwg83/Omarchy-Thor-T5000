@@ -11,7 +11,6 @@
 # internal disk. Tests: tests/test_make_thor_usb.py (RAYTONE_* variables exist for them).
 set -euo pipefail
 
-RULES=${RAYTONE_UDEV_RULES:-/run/udev/rules.d}
 ESP_LABEL=RAYTONE_ESP
 ROOT_LABEL=RAYTONE_ROOT
 
@@ -31,14 +30,12 @@ while (($#)); do
 done
 resolve_usb_disk
 
-run() { # run CMD... : destructive step, directly after a fresh identity check
+run() { # run CMD... : destructive step, directly after fresh in-use and identity checks
+  not_in_use
   identity
   echo "+ $*"
   "$@"
 }
-
-rule=$RULES/90-raytone-noauto-$serial.rules
-cleanup() { rm -f "$rule"; udevadm control --reload || true; }
 
 identity
 not_in_use
@@ -51,11 +48,10 @@ fi
 [[ $confirm == "$serial" ]] || die "--confirm-serial must repeat the disk serial before anything is written"
 [[ $EUID -eq 0 || ${RAYTONE_SKIP_ROOT_CHECK:-} == 1 ]] || die "must run as root to write"
 
-trap cleanup EXIT
-mkdir -p "$RULES"
-echo "ENV{ID_SERIAL_SHORT}==\"$serial\", ENV{UDISKS_IGNORE}=\"1\", ENV{UDISKS_AUTO}=\"0\"" > "$rule"
-echo "automount suppressed while writing: $(cat "$rule")"
-udevadm control --reload
+trap restore_automount EXIT
+suppress_automount
+identity
+not_in_use
 
 for p in "$dev"[0-9]*; do
   [[ -e $p ]] && run wipefs -a "$p"
