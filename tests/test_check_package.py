@@ -34,5 +34,51 @@ class CheckTests(unittest.TestCase):
             "etc/ld.so.conf.d/raytone-l4t.conf": "/usr/lib/raytone-l4t\n"}), [])
 
 
+NV = "usr/lib/aarch64-linux-gnu/nvidia"
+ICD = '{"file_format_version": "1.0.0", "ICD": {"library_path": "%s"}}'
+
+
+class RegistrationTests(unittest.TestCase):
+    """glvnd vendor, EGL external platform and Vulkan ICD files must name a library the package ships."""
+
+    def test_bare_soname_resolves_through_the_loader_directory(self):
+        paths = [f"{NV}/libGLX_nvidia.so.0", "usr/lib/raytone-l4t/libGLX_nvidia.so.0", "etc/vulkan/icd.d/nvidia_icd.json"]
+        links = {"usr/lib/raytone-l4t/libGLX_nvidia.so.0": f"/{NV}/libGLX_nvidia.so.0"}
+        contents = {"etc/vulkan/icd.d/nvidia_icd.json": ICD % "libGLX_nvidia.so.0"}
+        self.assertEqual(cp.problems(paths, contents, links), [])
+
+    def test_bare_soname_outside_the_loader_directory_fails(self):
+        paths = [f"{NV}/libGLX_nvidia.so.0", "etc/vulkan/icd.d/nvidia_icd.json"]
+        contents = {"etc/vulkan/icd.d/nvidia_icd.json": ICD % "libGLX_nvidia.so.0"}
+        self.assertTrue(cp.problems(paths, contents, {}))
+
+    def test_absolute_path_through_relative_links(self):
+        paths = [f"{NV}/libnvidia-egl-gbm.so.1.1.0", f"{NV}/libnvidia-egl-gbm.so.1",
+                 "usr/share/egl/egl_external_platform.d/15_nvidia_gbm.json"]
+        links = {f"{NV}/libnvidia-egl-gbm.so.1": "libnvidia-egl-gbm.so.1.1.0"}
+        contents = {"usr/share/egl/egl_external_platform.d/15_nvidia_gbm.json": ICD % f"/{NV}/libnvidia-egl-gbm.so.1"}
+        self.assertEqual(cp.problems(paths, contents, links), [])
+
+    def test_dangling_library_fails(self):
+        paths = [f"{NV}/libnvidia-egl-gbm.so.1", "usr/share/egl/egl_external_platform.d/15_nvidia_gbm.json"]
+        links = {f"{NV}/libnvidia-egl-gbm.so.1": "libnvidia-egl-gbm.so.1.1.0"}
+        contents = {"usr/share/egl/egl_external_platform.d/15_nvidia_gbm.json": ICD % f"/{NV}/libnvidia-egl-gbm.so.1"}
+        self.assertTrue(cp.problems(paths, contents, links))
+
+    def test_unreadable_registration_fails(self):
+        for text in (None, "not json", '{"ICD": {}}'):
+            with self.subTest(text=text):
+                contents = {} if text is None else {"usr/share/glvnd/egl_vendor.d/10_nvidia.json": text}
+                self.assertTrue(cp.problems(["usr/share/glvnd/egl_vendor.d/10_nvidia.json"], contents, {}))
+
+    def test_resolve_follows_absolute_and_relative_links(self):
+        links = {"etc/vulkan/icd.d/nvidia_icd.json": f"/{NV}/nvidia_icd.json",
+                 "usr/share/glvnd/egl_vendor.d/10_nvidia.json": "../../../lib/aarch64-linux-gnu/tegra-egl/nvidia.json"}
+        self.assertEqual(cp.resolve("etc/vulkan/icd.d/nvidia_icd.json", links), f"{NV}/nvidia_icd.json")
+        self.assertEqual(cp.resolve("usr/share/glvnd/egl_vendor.d/10_nvidia.json", links),
+                         "usr/lib/aarch64-linux-gnu/tegra-egl/nvidia.json")
+        self.assertIsNone(cp.resolve("a", {"a": "b", "b": "a"}))
+
+
 if __name__ == "__main__":
     unittest.main()
