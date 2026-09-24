@@ -51,7 +51,7 @@ resolve_usb_disk
 [[ $(sha256sum "$tarball" | cut -d' ' -f1) == "$tarball_sha" ]] || die "rootfs tarball sha256 does not match $tarball_sha"
 PKG_FILES=()
 for p in raytone-thor-firmware raytone-thor-linux raytone-thor-core; do
-  f=$(compgen -G "$pkgdir/$p-[0-9]*.pkg.tar.*" | sort -V | tail -1) || true
+  f=$(compgen -G "$pkgdir/$p-[0-9]*.pkg.tar.*" | grep -v '\.sig$' | sort -V | tail -1) || true
   [[ -n $f ]] || die "package $p not found in '$pkgdir'"
   PKG_FILES+=("$f")
 done
@@ -63,9 +63,24 @@ MIRROR=${PKG_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/archlinuxarm}
 ROOT_DEV=${dev}2
 HOSTNAME_=raytone-thor
 BASE_PKGS=(networkmanager openssh sudo avahi nss-mdns linux-firmware-realtek wireless-regdb iw vim less htop)
-UNITS=(sshd NetworkManager avahi-daemon systemd-timesyncd raytone-deadman.timer raytone-boot-marker
-       nv-load-display-modules nvfancontrol nvpmodel nvpower)
-DROP_CAPS=-sys_module,-sys_rawio,-sys_boot,-sys_time,-bpf,-perfmon,-mac_admin,-mac_override,-syslog,-wake_alarm
+UNITS=(sshd NetworkManager avahi-daemon systemd-timesyncd raytone-deadman.timer raytone-boot-start raytone-boot-marker
+       raytone-thermal-guard nv-load-display-modules nvfancontrol nvpmodel nvpower)
+DROP_CAPS=-sys_module,-sys_rawio,-sys_boot,-sys_time,-bpf,-perfmon,-mac_admin,-mac_override,-syslog,-wake_alarm,-sys_admin,-sys_ptrace,-mknod,-kill
+KVER=6.8.12-1021-tegra
+
+# Everything a login on the drive needs is checked before anything is written.
+[[ -s $HOST_HOME/.ssh/authorized_keys ]] || die "no $HOST_HOME/.ssh/authorized_keys to copy; the drive would have no SSH login"
+{ set +x; } 2>/dev/null
+awk -F: -v u="$user" '$1 == u {print $2}' "$HOST_ETC/shadow" 2>/dev/null | grep -q '^\$' ||
+  die "no password hash for $user in $HOST_ETC/shadow"
+NM_PROFILES=()   # the host's active, file-backed NetworkManager profiles
+while IFS= read -r line; do
+  f=${line##*:}
+  [[ $f == /etc/NetworkManager/system-connections/* ]] || continue
+  f=$HOST_ETC/NetworkManager/system-connections/${f##*/}
+  [[ -f $f ]] && NM_PROFILES+=("$f")
+done < <(nmcli -t -g NAME,FILENAME connection show --active 2>/dev/null)
+((${#NM_PROFILES[@]})) || die "no active NetworkManager profile to copy; the drive would have no network"
 
 if ((!write)); then
   identity
@@ -74,16 +89,19 @@ if ((!write)); then
   echo "target: $ROOT_DEV (RAYTONE_ROOT on $disk)"
   echo "rootfs: $(basename "$tarball") sha256 ok"
   echo "packages: ${PKG_FILES[*]##*/}"
+  echo "network: ${NM_PROFILES[*]##*/}"
   echo "dry run: nothing written. Add --write --confirm-serial $serial."
   exit 0
 fi
 [[ $confirm == "$serial" ]] || die "--confirm-serial must repeat the disk serial before anything is written"
 [[ $EUID -eq 0 || ${RAYTONE_SKIP_ROOT_CHECK:-} == 1 ]] || die "must run as root to write"
 if [[ ${RAYTONE_IN_NS:-} != 1 && ${RAYTONE_NO_UNSHARE:-} != 1 ]]; then
-  exec unshare --mount --propagation private -- env RAYTONE_IN_NS=1 bash "$0" "${ORIG_ARGS[@]}"
+  # PID 1 of new mount and PID namespaces: package hooks cannot see host processes, and leftovers die with it.
+  exec unshare --mount --pid --fork --propagation private -- env RAYTONE_IN_NS=1 bash "$0" "${ORIG_ARGS[@]}"
 fi
 
-trap restore_automount EXIT
+cleanup() { umount -R "$MNT" 2>/dev/null || true; restore_automount; }
+trap cleanup EXIT
 suppress_automount
 identity
 not_in_use
@@ -93,8 +111,11 @@ mount -t ext4 -o noatime "$ROOT_DEV" "$MNT"
 root_partuuid=$(blkid -s PARTUUID -o value "$ROOT_DEV")
 [[ -n $root_partuuid ]] || die "no PARTUUID for $ROOT_DEV"
 
-# 1. Unpack the rootfs once, with the tools root's bsdtar.
-if [[ ! -f $MNT/etc/arch-release ]]; then
+# 1. Unpack the rootfs once, with the tools root's bsdtar; a marker records a complete unpack.
+if [[ -f $MNT/etc/arch-release && ! -f $MNT/.raytone-unpacked ]]; then
+  die "$ROOT_DEV holds a partial unpack (no .raytone-unpacked); reformat it with make-thor-usb.sh"
+fi
+if [[ ! -f $MNT/.raytone-unpacked ]]; then
   [[ -z $(find "$MNT" -mindepth 1 -maxdepth 1 ! -name lost+found -print -quit) ]] ||
     die "$ROOT_DEV is neither empty nor an Arch root; refusing to unpack over it"
   mkdir -p "$tools/mnt/raytone-target" "$tools/mnt/raytone-cache"
@@ -103,6 +124,7 @@ if [[ ! -f $MNT/etc/arch-release ]]; then
   echo "+ unpacking $(basename "$tarball")"
   chroot "$tools" /usr/bin/env -i PATH=/usr/bin bsdtar -xpf "/mnt/raytone-cache/$(basename "$tarball")" -C /mnt/raytone-target
   umount "$tools/mnt/raytone-cache" "$tools/mnt/raytone-target"
+  [[ -f $MNT/etc/arch-release ]] && echo "$(basename "$tarball") $tarball_sha" > "$MNT/.raytone-unpacked"
 fi
 [[ -f $MNT/etc/arch-release ]] || die "unpacking the rootfs failed"
 
@@ -153,10 +175,11 @@ in_target gpgconf --homedir /etc/pacman.d/gnupg --kill all || true
 echo "$HOSTNAME_" > "$MNT/etc/hostname"
 printf '127.0.0.1 localhost\n::1 localhost\n127.0.1.1 %s.localdomain %s\n' "$HOSTNAME_" "$HOSTNAME_" > "$MNT/etc/hosts"
 printf '# RaytoneOS Thor USB drive\nPARTUUID=%s / ext4 defaults,noatime 0 1\n' "$root_partuuid" > "$MNT/etc/fstab"
-ln -sfn "$(readlink "$HOST_ETC/localtime")" "$MNT/etc/localtime"
+if [[ -L $HOST_ETC/localtime ]]; then ln -sfn "$(readlink "$HOST_ETC/localtime")" "$MNT/etc/localtime"
+else cp -f "$HOST_ETC/localtime" "$MNT/etc/localtime"; fi
 [[ -f $MNT/etc/locale.gen ]] && sed -i 's/^#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' "$MNT/etc/locale.gen"
 echo "LANG=en_US.UTF-8" > "$MNT/etc/locale.conf"
-in_target locale-gen || true
+in_target locale-gen
 mkdir -p "$MNT/var/log/journal" "$MNT/var/lib/raytone"
 [[ -f $MNT/etc/nsswitch.conf ]] &&
   sed -i '/^hosts:/{/mdns_minimal/!s/ resolve / mdns_minimal [NOTFOUND=return] resolve /}' "$MNT/etc/nsswitch.conf"
@@ -173,23 +196,76 @@ ExecStart=
 ExecStart=/usr/bin/systemctl --no-block reboot
 EOF
 done
+# Started from sysinit.target without the default dependencies, so it is armed even when later
+# startup stalls; a confirmed boot creates /run/raytone-keep.
 cat > "$units/raytone-deadman.timer" <<'EOF'
 [Unit]
 Description=RaytoneOS bring-up: reboot if nobody has confirmed this boot
+DefaultDependencies=no
 
 [Timer]
 OnBootSec=20min
 
 [Install]
-WantedBy=timers.target
+WantedBy=sysinit.target
 EOF
 cat > "$units/raytone-deadman.service" <<'EOF'
 [Unit]
 Description=RaytoneOS bring-up: reboot unless /run/raytone-keep exists
+DefaultDependencies=no
+Conflicts=shutdown.target
+Before=shutdown.target
 
 [Service]
 Type=oneshot
 ExecStart=/bin/sh -c 'test -e /run/raytone-keep || systemctl reboot'
+EOF
+cat > "$units/raytone-boot-start.service" <<'EOF'
+[Unit]
+Description=RaytoneOS bring-up: record that this boot reached a writable root
+DefaultDependencies=no
+After=systemd-remount-fs.service
+Before=sysinit.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'mkdir -p /var/lib/raytone; echo "$(date -Is) start $(uname -r)" >> /var/lib/raytone/boots.log'
+
+[Install]
+WantedBy=sysinit.target
+EOF
+# Thermal guard: without a running fan controller, or at 95 C, go back to JetPack.
+mkdir -p "$MNT/usr/lib/raytone"
+cat > "$MNT/usr/lib/raytone/thermal-guard" <<'EOF'
+#!/bin/sh
+# RaytoneOS bring-up: 90 s after start-up, reboot if nvfancontrol is not running or any thermal
+# zone is at or above 95 C; log the readings either way.
+sleep 90
+log=/var/lib/raytone/thermal.log
+max=0
+for z in /sys/class/thermal/thermal_zone*/temp; do
+  t=$(cat "$z" 2>/dev/null) || continue
+  [ "$t" -gt "$max" ] && max=$t
+done
+state=$(systemctl is-active nvfancontrol)
+echo "$(date -Is) nvfancontrol=$state max_mC=$max $(nvpmodel -q 2>/dev/null | tr '\n' ' ')" >> "$log"
+if [ "$state" != active ] || [ "$max" -ge 95000 ]; then
+  echo "$(date -Is) thermal guard: rebooting" >> "$log"
+  systemctl reboot
+fi
+EOF
+chmod 0755 "$MNT/usr/lib/raytone/thermal-guard"
+cat > "$units/raytone-thermal-guard.service" <<'EOF'
+[Unit]
+Description=RaytoneOS bring-up: reboot if fan control is not running or the SoC runs hot
+After=nvfancontrol.service nvpmodel.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/raytone/thermal-guard
+
+[Install]
+WantedBy=multi-user.target
 EOF
 cat > "$units/raytone-boot-marker.service" <<'EOF'
 [Unit]
@@ -209,12 +285,12 @@ if in_target getent passwd alarm > /dev/null; then in_target userdel -r alarm; f
 if ! in_target getent passwd "$user" > /dev/null; then
   in_target useradd -m -u 1000 -G wheel,video,render,audio,input -s /bin/bash "$user"
 fi
-hash=$(awk -F: -v u="$user" '$1 == u {print $2}' "$HOST_ETC/shadow")
-[[ $hash == \$* ]] || die "no password hash for $user on the host"
-printf '%s:%s\n' "$user" "$hash" | in_target chpasswd -e
-unset hash
+{ set +x; } 2>/dev/null
+awk -F: -v u="$user" '$1 == u {print $1 ":" $2}' "$HOST_ETC/shadow" | in_target chpasswd -e
 in_target passwd -l root
 install -d -m 0750 "$MNT/etc/sudoers.d"
+# Removed first, so a re-run never writes into the read-only files it left last time.
+rm -f "$MNT/etc/sudoers.d/10-wheel" "$MNT/etc/sudoers.d/raytone-temp"
 echo '%wheel ALL=(ALL:ALL) ALL' > "$MNT/etc/sudoers.d/10-wheel"
 echo "$user ALL=(ALL) NOPASSWD: ALL  # RaytoneOS bring-up only; remove when done" > "$MNT/etc/sudoers.d/raytone-temp"
 chmod 0440 "$MNT/etc/sudoers.d/10-wheel" "$MNT/etc/sudoers.d/raytone-temp"
@@ -222,13 +298,23 @@ install -d -m 0700 "$MNT/home/$user/.ssh"
 install -m 0600 "$HOST_HOME/.ssh/authorized_keys" "$MNT/home/$user/.ssh/authorized_keys"
 in_target chown -R "$user:$user" "/home/$user/.ssh"
 install -d -m 0700 "$MNT/etc/NetworkManager/system-connections"
-for c in "$HOST_ETC"/NetworkManager/system-connections/*.nmconnection; do
-  [[ -e $c ]] && install -m 0600 "$c" "$MNT/etc/NetworkManager/system-connections/"
-done
+install -m 0600 "${NM_PROFILES[@]}" "$MNT/etc/NetworkManager/system-connections/"
 
-# 6. Services, then a record of what was installed.
+# 6. Services and SSH host keys.
 in_target systemctl enable "${UNITS[@]}"
-in_target pacman -Q > "$MNT/var/lib/raytone/installed-packages.txt" || true
-ls -la "$MNT/boot" > "$MNT/var/lib/raytone/boot-listing.txt" 2>&1 || true
+in_target ssh-keygen -A
+
+# 7. Verify before reporting success.
+[[ -f $MNT/boot/vmlinuz-raytone-thor-linux ]] || die "no /boot/vmlinuz-raytone-thor-linux on the drive"
+[[ -f $MNT/usr/lib/modules/$KVER/modules.dep ]] || die "no modules index for $KVER"
+in_target test -e /etc/nvpmodel.conf || die "/etc/nvpmodel.conf does not resolve on the drive"
+in_target test -e /etc/nvfancontrol.conf || die "/etc/nvfancontrol.conf does not resolve on the drive"
+in_target systemctl is-enabled "${UNITS[@]}" > /dev/null || die "not every unit is enabled"
+in_target visudo -cf /etc/sudoers.d/10-wheel > /dev/null || die "sudoers 10-wheel does not parse"
+in_target visudo -cf /etc/sudoers.d/raytone-temp > /dev/null || die "sudoers raytone-temp does not parse"
+in_target sshd -t || die "sshd configuration does not validate"
+in_target pacman -Q > "$MNT/var/lib/raytone/installed-packages.txt"
+ls -la "$MNT/boot" > "$MNT/var/lib/raytone/boot-listing.txt"
 sync
+echo "verified: kernel, modules index, board links, units, sudoers, sshd configuration"
 echo "installed: Arch Linux ARM root on $ROOT_DEV (PARTUUID=$root_partuuid)"

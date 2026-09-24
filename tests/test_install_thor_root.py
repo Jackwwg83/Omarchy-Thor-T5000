@@ -35,7 +35,16 @@ STUB = textwrap.dedent("""\
         echo "in-chroot $root $*" >> "$STATE/calls"
         # the unpacked rootfs has the default "alarm" user and no one else
         if [[ $1 == getent && $2 == passwd ]]; then [[ $3 == alarm ]] && exit 0; exit 2; fi
-        if [[ $1 == bsdtar ]]; then mkdir -p "$TARGET/etc" "$TARGET/home/alarm"; echo "Arch Linux ARM" > "$TARGET/etc/arch-release"; fi ;;
+        if [[ $1 == bsdtar ]]; then mkdir -p "$TARGET/etc" "$TARGET/home/alarm"; echo "Arch Linux ARM" > "$TARGET/etc/arch-release"; fi
+        if [[ $1 == pacman && $2 == -U ]]; then
+          k=$TARGET/usr/lib/modules/6.8.12-1021-tegra
+          mkdir -p "$TARGET/boot" "$k" "$TARGET/etc/nvpmodel" "$TARGET/etc/nvpower/nvfancontrol"
+          touch "$TARGET/boot/vmlinuz-raytone-thor-linux" "$k/modules.dep" "$TARGET/etc/nvpmodel/nvpmodel_p3834_0008.conf" \
+                "$TARGET/etc/nvpower/nvfancontrol/nvfancontrol_p3834_0008_p4071_0000.conf"
+          ln -sf nvpmodel/nvpmodel_p3834_0008.conf "$TARGET/etc/nvpmodel.conf"
+          ln -sf nvpower/nvfancontrol/nvfancontrol_p3834_0008_p4071_0000.conf "$TARGET/etc/nvfancontrol.conf"
+        fi ;;
+      nmcli) echo "Home:/etc/NetworkManager/system-connections/Home.nmconnection"; echo "lo:/run/NetworkManager/system-connections/lo.nmconnection" ;;
     esac
     exit 0
     """)
@@ -51,7 +60,7 @@ class InstallThorRootTests(unittest.TestCase):
                   self.pkgs, self.etc / "NetworkManager" / "system-connections", self.home / ".ssh", t / "rules"):
             d.mkdir(parents=True)
         (self.tools / "usr" / "bin" / "bsdtar").touch()
-        for tool in ("lsblk", "findmnt", "swapon", "blkid", "mount", "umount", "chroot", "udevadm", "sync", "setpriv"):
+        for tool in ("lsblk", "findmnt", "swapon", "blkid", "mount", "umount", "chroot", "udevadm", "sync", "setpriv", "nmcli"):
             p = self.bin / tool
             p.write_text(STUB)
             p.chmod(0o755)
@@ -69,6 +78,7 @@ class InstallThorRootTests(unittest.TestCase):
             (self.pkgs / p).write_bytes(b"pkg")
         (self.etc / "shadow").write_text(f"root:*:1::::::\nnvidia:{HASH}:20000:0:99999:7:::\n")
         (self.etc / "NetworkManager" / "system-connections" / "Home.nmconnection").write_text("[wifi]\nssid=Home\n")
+        (self.etc / "NetworkManager" / "system-connections" / "Cafe.nmconnection").write_text("[wifi]\nssid=Cafe\n")
         os.symlink("/usr/share/zoneinfo/Asia/Shanghai", self.etc / "localtime")
         (self.home / ".ssh" / "authorized_keys").write_text("ssh-ed25519 AAAA test\n")
         self.rules = t / "rules"
@@ -178,6 +188,57 @@ class InstallThorRootTests(unittest.TestCase):
         self.assertIn("%wheel ALL=(ALL:ALL) ALL", (sudo / "10-wheel").read_text())
         self.assertIn("NOPASSWD", (sudo / "raytone-temp").read_text())
         self.assertEqual((sudo / "raytone-temp").stat().st_mode & 0o777, 0o440)
+
+    def test_signature_files_are_not_taken_for_packages(self):
+        for p in PKGS:
+            (self.pkgs / (p + ".sig")).write_bytes(b"sig")
+        self.write()
+        self.assertFalse([c for c in self.chroot_calls() if c.startswith("pacman -U") and ".sig" in c])
+
+    def test_refuses_before_any_mount_without_a_login(self):
+        for broken in ("keys", "hash"):
+            with self.subTest(broken=broken):
+                (self.state / "calls").unlink(missing_ok=True)
+                if broken == "keys":
+                    (self.home / ".ssh" / "authorized_keys").unlink()
+                else:
+                    (self.home / ".ssh" / "authorized_keys").write_text("ssh-ed25519 AAAA test\n")
+                    (self.etc / "shadow").write_text("root:*:1::::::\n")
+                r = self.run_script("--write", "--confirm-serial", SERIAL)
+                self.assertNotEqual(r.returncode, 0)
+                self.assertFalse([c for c in self.calls() if c.startswith("mount ")])
+
+    def test_a_partial_unpack_is_refused(self):
+        (self.target / "etc").mkdir()
+        (self.target / "etc" / "arch-release").write_text("Arch Linux ARM\n")
+        r = self.run_script("--write", "--confirm-serial", SERIAL)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("partial", r.stderr)
+
+    def test_only_the_active_network_profile_is_copied(self):
+        self.write()
+        nm = self.target / "etc/NetworkManager/system-connections"
+        self.assertEqual(sorted(p.name for p in nm.iterdir()), ["Home.nmconnection"])
+
+    def test_install_is_verified_before_it_reports_success(self):
+        r = self.write()
+        self.assertIn("verified:", r.stdout)
+        (self.target / "boot/vmlinuz-raytone-thor-linux").unlink()
+        (self.target / ".raytone-unpacked").write_text("ok\n")
+        r = self.run_script("--write", "--confirm-serial", SERIAL)
+        self.assertEqual(r.returncode, 0)  # the stub pacman -U lays the kernel down again
+
+    def test_early_safety_and_thermal_guard(self):
+        self.write()
+        u = self.target / "etc/systemd/system"
+        self.assertIn("DefaultDependencies=no", (u / "raytone-deadman.timer").read_text())
+        self.assertIn("DefaultDependencies=no", (u / "raytone-boot-start.service").read_text())
+        guard = (u / "raytone-thermal-guard.service").read_text()
+        self.assertIn("nvfancontrol", guard)
+        self.assertIn("reboot", guard)
+        enable = " ".join(c for c in self.chroot_calls() if c.startswith("systemctl enable"))
+        self.assertIn("raytone-thermal-guard", enable)
+        self.assertIn("raytone-boot-start", enable)
 
     def test_units_enabled(self):
         self.write()
