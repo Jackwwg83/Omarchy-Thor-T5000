@@ -1,0 +1,16 @@
+# Board configuration links for the power model and fan control, as JetPack sets them on the
+# Jetson AGX Thor developer kit (module p3834-0008 on carrier p4071-0000).
+_link() { [[ -e $2 || -L $2 ]] || ln -s "$1" "$2"; }
+
+post_install() {
+  local compat
+  compat=$(tr '\0' ' ' < /proc/device-tree/compatible 2>/dev/null)
+  if [[ $compat == *nvidia,p3834-0008* && $compat == *nvidia,p4071-0000* ]]; then
+    _link /etc/nvpmodel/nvpmodel_p3834_0008.conf /etc/nvpmodel.conf
+    _link /etc/nvpower/nvfancontrol/nvfancontrol_p3834_0008_p4071_0000.conf /etc/nvfancontrol.conf
+  else
+    echo "raytone-thor-core: not a Jetson AGX Thor developer kit ($compat); link /etc/nvpmodel.conf and /etc/nvfancontrol.conf by hand"
+  fi
+}
+
+post_upgrade() { post_install; }

@@ -31,12 +31,17 @@ PATH_RE = re.compile(r"^/[A-Za-z0-9._/+-]+$")
 RESERVED_IDS = ("retry-reboot", "uefi-menu")
 
 
-def cmdline(proc_cmdline, root_partuuid, extra=()):
-    """JetPack's booted command line with the root swapped, boot-loader profiling dropped, panic=10."""
+def cmdline(proc_cmdline, root_partuuid, extra=(), rootwait=None):
+    """JetPack's booted command line with the root swapped, boot-loader profiling dropped, panic=10.
+
+    rootwait=N bounds the wait for the root device, so a missing root panics and reboots instead of
+    waiting forever (Linux 6.5 and later)."""
     if not PARTUUID_RE.match(root_partuuid or ""):
         raise ValueError(f"not a PARTUUID: {root_partuuid!r}")
     tokens = [t for t in proc_cmdline.split()
               if not t.startswith(("root=", "bl_prof_", "panic="))]
+    if rootwait is not None:
+        tokens = [f"rootwait={int(rootwait)}" if t == "rootwait" or t.startswith("rootwait=") else t for t in tokens]
     tokens = [f"root=PARTUUID={root_partuuid}"] + tokens + ["panic=10"] + list(extra)
     for t in tokens:
         if UNSAFE_RE.search(t):
@@ -147,13 +152,14 @@ def main(argv):
     c.add_argument("--proc-cmdline", required=True)
     c.add_argument("--root-partuuid", required=True)
     c.add_argument("--extra", action="append", default=[])
+    c.add_argument("--rootwait", type=int)
     g = sub.add_parser("grub-cfg")
     g.add_argument("--entries", required=True, help="JSON list of Entry fields")
     g.add_argument("--default", required=True)
     args = ap.parse_args(argv)
     try:
         if args.cmd == "cmdline":
-            print(cmdline(open(args.proc_cmdline).read(), args.root_partuuid, args.extra))
+            print(cmdline(open(args.proc_cmdline).read(), args.root_partuuid, args.extra, args.rootwait))
         else:
             print(grub_cfg([Entry(**e) for e in json.load(open(args.entries))], default=args.default), end="")
     except ValueError as e:

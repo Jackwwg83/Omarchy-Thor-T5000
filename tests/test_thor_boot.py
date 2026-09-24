@@ -30,6 +30,11 @@ class CmdlineTests(unittest.TestCase):
         c = tb.cmdline(JETPACK + " panic=30", USB_ROOT).split()
         self.assertEqual([t for t in c if t.startswith("panic=")], ["panic=10"])
 
+    def test_rootwait_can_be_bounded_so_a_missing_root_panics_and_reboots(self):
+        c = tb.cmdline(JETPACK, USB_ROOT, rootwait=20).split()
+        self.assertIn("rootwait=20", c)
+        self.assertNotIn("rootwait", c)
+
     def test_extra_arguments_are_appended(self):
         self.assertTrue(tb.cmdline(JETPACK, USB_ROOT, extra=["rd.emergency=reboot"]).endswith("rd.emergency=reboot"))
 

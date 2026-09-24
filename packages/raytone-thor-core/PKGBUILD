@@ -1,0 +1,81 @@
+# RaytoneOS: NVIDIA L4T R39.2.1 base userspace for Jetson AGX Thor: core libraries, init scripts and
+# units, power model, fan control, tools, NVML (nvidia-smi) and NvSci.
+pkgname=raytone-thor-core
+pkgver=39.2.1
+pkgrel=1
+pkgdesc='NVIDIA L4T R39.2.1 base userspace, power and fan control for Jetson AGX Thor'
+arch=(aarch64)
+url='https://developer.nvidia.com/embedded/jetson-linux'
+license=(LicenseRef-NVIDIA-L4T)
+depends=(bash raytone-thor-linux raytone-thor-firmware)
+install=raytone-thor-core.install
+options=(!strip !debug)
+backup=(etc/nvpmodel/nvpmodel_p3834_0008.conf etc/nvpower/nvfancontrol/nvfancontrol_p3834_0008_p4071_0000.conf)
+
+# BEGIN l4t sources
+# L4T r39.2 debs, from manifests/ (scripts/pkgbuild_sources.py)
+_l4t_debs=(nvidia-l4t-core nvidia-l4t-init nvidia-l4t-init-openrm nvidia-l4t-configs nvidia-l4t-nvpmodel nvidia-l4t-nvfancontrol nvidia-l4t-tools nvidia-l4t-nvml nvidia-l4t-nvsci)
+source=("nvidia-l4t-core.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-core/nvidia-l4t-core_39.2.1-20260806224157_arm64.deb"
+        "nvidia-l4t-init.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-init/nvidia-l4t-init_39.2.1-20260806224157_arm64.deb"
+        "nvidia-l4t-init-openrm.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-init-openrm/nvidia-l4t-init-openrm_39.2.1-20260806224157_arm64.deb"
+        "nvidia-l4t-configs.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-configs/nvidia-l4t-configs_39.2.1-20260806224157_arm64.deb"
+        "nvidia-l4t-nvpmodel.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-nvpmodel/nvidia-l4t-nvpmodel_39.2.1-20260806224157_arm64.deb"
+        "nvidia-l4t-nvfancontrol.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-nvfancontrol/nvidia-l4t-nvfancontrol_39.2.1-20260806224157_arm64.deb"
+        "nvidia-l4t-tools.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-tools/nvidia-l4t-tools_39.2.1-20260806224157_arm64.deb"
+        "nvidia-l4t-nvml.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-nvml/nvidia-l4t-nvml_39.2.1-20260806224157_arm64.deb"
+        "nvidia-l4t-nvsci.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-nvsci/nvidia-l4t-nvsci_39.2.1-20260806224157_arm64.deb")
+sha256sums=('277a6fb25f2c06cc2dee6d352bef3abb15929739f396fea1cee70d1dea83008b'
+            '26cfc6b244ba3d3bbf424732a1ffe0d9e21faa0298eaacc911b7466b5bd76b93'
+            'bb4220b9f165b5fa6fdf07222d76e9758e783ff8f1be4ba06800a5878f988300'
+            'dd45cce107a89fe6efafe7d7429093893a2ab0a190b518d01be6ddeacd57f897'
+            'e434d97e0423476913808c58a769a419a7f39cf63dd4e7b4c6ddd97c8283f761'
+            '3cc0463ed8e0b7c5ee6c03baa63bc14307a7ba3f46d93fb2959c52b49e4fb6a8'
+            'c73b0cb57f5c16055fca985252b62a5ce4e9e9b5f912f78bd73250d6e5db23c1'
+            '6c3e78ad11e84c3c677f2d9c60473ca52103ed378faab9ccf6a83f756b884b21'
+            '7dc851490b23a4bba340786ee9b2fc51793c6c6bcdeca2fe0add5cadc0307423')
+noextract=(nvidia-l4t-core.deb nvidia-l4t-init.deb nvidia-l4t-init-openrm.deb nvidia-l4t-configs.deb nvidia-l4t-nvpmodel.deb nvidia-l4t-nvfancontrol.deb nvidia-l4t-tools.deb nvidia-l4t-nvml.deb nvidia-l4t-nvsci.deb)
+# END l4t sources
+source+=(l4t_repack.py l4t_manifest.py)
+sha256sums+=(SKIP SKIP)
+# Only NVIDIA-named libraries enter the loader path, through /usr/lib/raytone-l4t; NVIDIA's own
+# ld.so.conf.d entry for the whole directory is dropped, so nothing there can shadow Arch's libraries.
+_allow='^(libnv|libcuda|libGLX_nvidia|libEGL_nvidia|libGLES(v1_CM|v2)_nvidia|libtegra|libjetsonpower)'
+
+_stage() { # unpack each deb's data.tar into its own tree
+  local d
+  for d in "${_l4t_debs[@]}"; do
+    rm -rf "$srcdir/stage-$d" && mkdir -p "$srcdir/stage-$d"
+    bsdtar -xOf "$srcdir/$d.deb" 'data.tar.*' | bsdtar -xpf - -C "$srcdir/stage-$d"
+  done
+}
+
+_repack() { # _repack EXCLUDE_REGEX... : lay the trees out for Arch, report kept and dropped paths
+  local args=() rx
+  for rx in "$@"; do args+=(--exclude "$rx"); done
+  python3 "$srcdir/l4t_repack.py" --out "$pkgdir" --pkgname "$pkgname" --report "$srcdir/$pkgname-report.json" \
+    "${args[@]}" $(printf "$srcdir/stage-%s " "${_l4t_debs[@]}")
+  install -Dm644 "$srcdir/$pkgname-report.json" "$pkgdir/usr/share/raytone/$pkgname-report.json"
+}
+
+package() {
+  _stage
+  _repack '^/etc/ld\.so\.conf\.d/' '^/etc/(cloud|skel|apt|xdg)/' '^/usr/share/applications/' \
+          '^/etc/systemd/system-preset/' '^/etc/modprobe\.d/nvgpu\.conf$' '/nv-(depmod|modprobe)-nvgpu' \
+          '/nv_fuse_read|/nv_overlayfs_config|/nv-update-debian-release|/nvimp_util'
+  local f
+  install -d "$pkgdir/usr/lib/raytone-l4t"
+  for f in "$pkgdir"/usr/lib/aarch64-linux-gnu/nvidia/*.so*; do
+    if [[ $(basename "$f") =~ $_allow ]]; then
+      ln -s "/usr/lib/aarch64-linux-gnu/nvidia/$(basename "$f")" "$pkgdir/usr/lib/raytone-l4t/"
+    fi
+  done
+  install -d "$pkgdir/etc/ld.so.conf.d" "$pkgdir/usr/lib/sysusers.d"
+  echo /usr/lib/raytone-l4t > "$pkgdir/etc/ld.so.conf.d/raytone-l4t.conf"
+  # Groups NVIDIA's init package creates on Ubuntu, used by its udev rules.
+  cat > "$pkgdir/usr/lib/sysusers.d/raytone-thor.conf" <<'EOF'
+g trusty - -
+g crypto - -
+EOF
+  # Links resolve on the target system; in the build root they dangle, so check the link itself.
+  test -L "$pkgdir/usr/lib/raytone-l4t/libnvidia-rmapi-tegra.so.595.78"
+}

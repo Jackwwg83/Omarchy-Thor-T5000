@@ -1,0 +1,66 @@
+# RaytoneOS: NVIDIA's L4T R39.2.1 kernel for Jetson AGX Thor, repackaged from NVIDIA's debs.
+# The binaries are NVIDIA's, unmodified; only the layout changes (merged /usr, Arch kernel conventions).
+pkgname=raytone-thor-linux
+_kver=6.8.12-1021-tegra
+pkgver=6.8.12.l4t39.2.1
+pkgrel=1
+pkgdesc='NVIDIA L4T R39.2.1 kernel with out-of-tree, OpenRM and display modules for Jetson AGX Thor'
+arch=(aarch64)
+url='https://developer.nvidia.com/embedded/jetson-linux'
+license=(GPL-2.0-only LicenseRef-NVIDIA-L4T)
+depends=(kmod mkinitcpio raytone-thor-firmware)
+options=(!strip !debug)
+
+# BEGIN l4t sources
+# L4T r39.2 debs, from manifests/ (scripts/pkgbuild_sources.py)
+_l4t_debs=(nvidia-l4t-kernel nvidia-l4t-kernel-oot-modules nvidia-l4t-kernel-openrm nvidia-l4t-display-kernel nvidia-l4t-kernel-module-configs)
+source=("nvidia-l4t-kernel.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-kernel/nvidia-l4t-kernel_6.8.12-tegra-39.2.1-20260806224157_arm64.deb"
+        "nvidia-l4t-kernel-oot-modules.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-kernel-oot-modules/nvidia-l4t-kernel-oot-modules_6.8.12-tegra-39.2.1-20260806224157_arm64.deb"
+        "nvidia-l4t-kernel-openrm.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-kernel-openrm/nvidia-l4t-kernel-openrm_6.8.12-tegra-39.2.1-20260806224157_arm64.deb"
+        "nvidia-l4t-display-kernel.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-display-kernel/nvidia-l4t-display-kernel_6.8.12-tegra-39.2.1-20260806224157_arm64.deb"
+        "nvidia-l4t-kernel-module-configs.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-kernel-module-configs/nvidia-l4t-kernel-module-configs_6.8.12-tegra-39.2.1-20260806224157_arm64.deb")
+sha256sums=('91e8def02dcc45846a4f6ba70a258e29f436072ae42d0b547b86b3216dfe8d4f'
+            '636577601b61612d254db45e2034c10263d899d766a9699c7827a7ca82ce409d'
+            '3a789d743e226ff2cf2e49d736224bfeebcb0ad4ae581b9ed8b1548c59c4f917'
+            'fd7e47afde926bf443059d235106e1124c9a65fad21eaae5f082e8c59f6b1a43'
+            'f8dc87bc50da83d3d69e64db2c1a306c2618fe0f51a069d131522305d12a2729')
+noextract=(nvidia-l4t-kernel.deb nvidia-l4t-kernel-oot-modules.deb nvidia-l4t-kernel-openrm.deb nvidia-l4t-display-kernel.deb nvidia-l4t-kernel-module-configs.deb)
+# END l4t sources
+source+=(l4t_repack.py l4t_manifest.py)
+sha256sums+=(SKIP SKIP)
+
+_stage() { # unpack each deb's data.tar into its own tree
+  local d
+  for d in "${_l4t_debs[@]}"; do
+    rm -rf "$srcdir/stage-$d" && mkdir -p "$srcdir/stage-$d"
+    bsdtar -xOf "$srcdir/$d.deb" 'data.tar.*' | bsdtar -xpf - -C "$srcdir/stage-$d"
+  done
+}
+
+_repack() { # _repack EXCLUDE_REGEX... : lay the trees out for Arch, report kept and dropped paths
+  local args=() rx
+  for rx in "$@"; do args+=(--exclude "$rx"); done
+  python3 "$srcdir/l4t_repack.py" --out "$pkgdir" --pkgname "$pkgname" --report "$srcdir/$pkgname-report.json" \
+    "${args[@]}" $(printf "$srcdir/stage-%s " "${_l4t_debs[@]}")
+  install -Dm644 "$srcdir/$pkgname-report.json" "$pkgdir/usr/share/raytone/$pkgname-report.json"
+}
+
+package() {
+  _stage
+  # depmod regenerates these indexes; modules.builtin*, modules.order are its inputs and stay.
+  _repack '^/(usr/)?lib/modules/[^/]+/modules\.(alias|alias\.bin|dep|dep\.bin|devname|softdep|symbols|symbols\.bin|builtin\.alias\.bin|builtin\.bin)$' \
+          '^/boot/'
+  # Arch kernel conventions: mkinitcpio's hook copies vmlinuz to /boot and builds the initramfs named by pkgbase.
+  install -Dm644 "$srcdir/stage-nvidia-l4t-kernel/boot/Image" "$pkgdir/usr/lib/modules/$_kver/vmlinuz"
+  echo "$pkgname" > "$pkgdir/usr/lib/modules/$_kver/pkgbase"
+  # Thor uses the OpenRM display and GPU modules, which is what nv-load-display-modules selects at boot;
+  # the override is here too so depmod is right before that service first runs.
+  install -d "$pkgdir/usr/lib/depmod.d"
+  cat > "$pkgdir/usr/lib/depmod.d/raytone-thor-openrm.conf" <<'EOF'
+override nvidia-drm * updates/opensource-gpu-disp
+override nvidia-modeset * updates/opensource-gpu-disp
+override nvidia-uvm * updates/opensource-gpu-disp
+override nvidia * updates/opensource-gpu-disp
+EOF
+  test -f "$pkgdir/usr/lib/modules/$_kver/updates/opensource-gpu-disp/nvidia.ko"
+}

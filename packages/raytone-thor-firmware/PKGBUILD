@@ -1,0 +1,44 @@
+# RaytoneOS: NVIDIA L4T R39.2.1 firmware for Jetson AGX Thor (GPU system processor, display, engines).
+pkgname=raytone-thor-firmware
+pkgver=39.2.1
+pkgrel=1
+pkgdesc='NVIDIA L4T R39.2.1 firmware for Jetson AGX Thor'
+arch=(aarch64)
+url='https://developer.nvidia.com/embedded/jetson-linux'
+license=(LicenseRef-NVIDIA-L4T)
+options=(!strip !debug)
+
+# BEGIN l4t sources
+# L4T r39.2 debs, from manifests/ (scripts/pkgbuild_sources.py)
+_l4t_debs=(nvidia-l4t-firmware nvidia-l4t-firmware-openrm)
+source=("nvidia-l4t-firmware.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-firmware/nvidia-l4t-firmware_39.2.1-20260806224157_arm64.deb"
+        "nvidia-l4t-firmware-openrm.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-firmware-openrm/nvidia-l4t-firmware-openrm_39.2.1-20260806224157_arm64.deb")
+sha256sums=('ab95bcddebe7e49accb1a951a32052ec4cf3bb5e54c13407c9f0a89894f58178'
+            '7efcfdb66b045fd2168665402745f1d781dbf2d44a354f2f355e4afe74466a20')
+noextract=(nvidia-l4t-firmware.deb nvidia-l4t-firmware-openrm.deb)
+# END l4t sources
+source+=(l4t_repack.py l4t_manifest.py)
+sha256sums+=(SKIP SKIP)
+
+_stage() { # unpack each deb's data.tar into its own tree
+  local d
+  for d in "${_l4t_debs[@]}"; do
+    rm -rf "$srcdir/stage-$d" && mkdir -p "$srcdir/stage-$d"
+    bsdtar -xOf "$srcdir/$d.deb" 'data.tar.*' | bsdtar -xpf - -C "$srcdir/stage-$d"
+  done
+}
+
+_repack() { # _repack EXCLUDE_REGEX... : lay the trees out for Arch, report kept and dropped paths
+  local args=() rx
+  for rx in "$@"; do args+=(--exclude "$rx"); done
+  python3 "$srcdir/l4t_repack.py" --out "$pkgdir" --pkgname "$pkgname" --report "$srcdir/$pkgname-report.json" \
+    "${args[@]}" $(printf "$srcdir/stage-%s " "${_l4t_debs[@]}")
+  install -Dm644 "$srcdir/$pkgname-report.json" "$pkgdir/usr/share/raytone/$pkgname-report.json"
+}
+
+package() {
+  _stage
+  # Orin (ga10b, tegra234) firmware is not needed on Thor and may overlap linux-firmware.
+  _repack '^/lib/firmware/nvidia/(ga10b|tegra234)/' '^/lib/firmware/[^/]*t234[^/]*$'
+  test -d "$pkgdir/usr/lib/firmware/nvidia/595.78"
+}
