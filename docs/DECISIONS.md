@@ -92,8 +92,13 @@ boot slots, BIOS version) compared unchanged after every run; GDM came back each
 | Cause: Thor exposes display (nvidia-drm on tegra264-display, `card3`/`renderD130`) and GPU (nvidia-drm on PCI, `card2`/`renderD129`) as two DRM devices. Aquamarine picks the display device's own render node; Hyprland advertises it as the dma-buf main device and in `wl_drm`. NVIDIA EGL cannot initialise on `renderD130` (Gate 0a), so clients drop to Mesa | Hyprland log: `Creating CDRMRenderer on gpu /dev/dri/renderD130`, `Using RENDERNODEFD` | Needs a code change, not configuration: neither aquamarine nor Hyprland has an override |
 | Aliasing `renderD130` to the GPU node inside the probe root breaks NVIDIA's own EGL device enumeration (kmscube cannot initialise, Hyprland aborts) | run-20260924-225204 | Device-node tricks are ruled out for the real system too |
 | Only advertising a different render node from aquamarine would make Hyprland's `eglDeviceFromDRMFD` pick EGL device 2 (`card2`), which fails to initialise | Hyprland `OpenGL.cpp` matching by primary node; Gate 0a devices 1–3 fail | Patch Hyprland, not aquamarine |
-| Fix: Hyprland advertises the render node the chosen EGL device reports (`EGL_DRM_RENDER_NODE_FILE_EXT`, `renderD129` for device 0) in linux-dmabuf feedback and `wl_drm`, when it differs from its own; no change on single-device GPUs | `patches/hyprland-0.56.2-egl-render-node.patch`, `packages/hyprland` (Arch recipe, pkgrel 3.1) | Being validated |
+| Fix: Hyprland advertises the render node the chosen EGL device reports (`EGL_DRM_RENDER_NODE_FILE_EXT`, `renderD129` for device 0) in linux-dmabuf feedback and `wl_drm`, when it differs from its own; no change on single-device GPUs | `patches/hyprland-0.56.2-egl-render-node.patch`, `packages/hyprland` (Arch recipe, pkgrel 3.1) | Validated in run-20260924-230346: clients render on NVIDIA Thor; see [evidence/gate0b](evidence/gate0b/README.md) |
 | kmscube polls stdin each frame and quits when it is readable; under systemd stdin is `/dev/null` | "user interrupted!" after the first frame | Harness fix: `-N` |
 | kmscube's atomic mode cannot import the KMS out-fence into EGL (`create_fence: Assertion`) | `kmscube-atomic.txt` | Not on Hyprland's path (it passed); recorded, frame pacing measured with legacy flips |
 | Hyprland exits with SIGSEGV after `hl.dsp.exit()` in both rounds | exit 139 | To investigate from the crash report |
 | An NVRM assertion (`NV0080_CTRL_CMD_INTERNAL_MEMSYS_SET_ZBC_REFERENCED`, object not found) appears once per run | `kernel.txt` | Non-fatal; noted |
+
+**Gate 0b verdict (2026-09-24, 23:05 SGT):** pass on kernel and compositor evidence, with the patched
+Hyprland; eye confirmation owed to the owner. Open: Hyprland's SIGSEGV at exit. Worth offering the
+render-node patch upstream (hyprwm/Hyprland), since it only acts when the EGL device reports a
+render node different from the compositor's.

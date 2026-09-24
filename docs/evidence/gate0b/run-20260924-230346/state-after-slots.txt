@@ -1,0 +1,7 @@
+Current version: 39.2.1
+Capsule update status: 0
+Current bootloader slot: A
+Active bootloader slot: A
+num_slots: 2
+slot: 0,             status: normal
+slot: 1,             status: normal

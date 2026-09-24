@@ -1,0 +1,70 @@
+Hyprland 0.56.2 built from branch v0.56.2 at commit efb50993780079460b0cbed1363e2166a2de1d9f clean ([gha] Nix: update inputs).
+Date: Wed Aug 5 14:13:21 2026
+Tag: v0.56.2, commits: 7661
+
+Libraries:
+Hyprgraphics: built against 0.5.1, system has 0.5.1
+Hyprutils: built against 0.14.2, system has 0.14.2
+Hyprcursor: built against 0.1.13, system has 0.1.13
+Hyprlang: built against 0.6.8, system has 0.6.8
+Aquamarine: built against 0.15.1, system has 0.15.1
+
+Version ABI string: efb50993780079460b0cbed1363e2166a2de1d9f_aq_0.15_hu_0.14_hg_0.5_hc_0.1_hlg_0.6
+no flags were set
+
+
+System Information:
+System name: Linux
+Node name: nvidia
+Release: 6.8.12-1021-tegra
+Version: #2 SMP PREEMPT Wed Aug 19 15:09:25 CST 2026
+
+Libraries:
+Hyprgraphics: built against 0.5.1, system has 0.5.1
+Hyprutils: built against 0.14.2, system has 0.14.2
+Hyprcursor: built against 0.1.13, system has 0.1.13
+Hyprlang: built against 0.6.8, system has 0.6.8
+Aquamarine: built against 0.15.1, system has 0.15.1
+
+
+
+GPU information: 
+
+
+os-release: NAME="Arch Linux ARM"
+PRETTY_NAME="Arch Linux ARM"
+ID=archarm
+ID_LIKE=arch
+BUILD_ID=rolling
+ANSI_COLOR="38;2;23;147;209"
+HOME_URL="https://archlinuxarm.org/"
+DOCUMENTATION_URL="https://archlinuxarm.org/wiki"
+SUPPORT_URL="https://archlinuxarm.org/forum"
+BUG_REPORT_URL="https://github.com/archlinuxarm/PKGBUILDs/issues"
+LOGO=archlinux-logo
+
+
+plugins:
+
+Explicit sync: supported
+GL ver: 3.2
+Backend: drm
+
+Monitor info:
+	Panel HDMI-A-1: 2560x1440, HDMI-A-1 Samsung Electric Company LS27A600U <redacted> -> backend drm
+		explicit ✔️
+		edid:
+			hdr ✔️
+			chroma ✔️
+			bt2020 ✔️
+		vrr capable ❌
+		non-desktop ❌
+		
+
+State:
+
+configProvider: lua
+backend: drm
+
+
+

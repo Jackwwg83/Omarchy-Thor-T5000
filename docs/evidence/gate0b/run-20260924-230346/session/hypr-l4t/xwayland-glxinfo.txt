@@ -1,0 +1,18 @@
+name of display: :0
+display: :0  screen: 0
+direct rendering: Yes
+OpenGL vendor string: NVIDIA Corporation
+OpenGL renderer string: NVIDIA Thor/PCIe
+OpenGL core profile version string: 4.6.0 NVIDIA 595.78
+OpenGL core profile shading language version string: 4.60 NVIDIA
+OpenGL core profile context flags: (none)
+OpenGL core profile profile mask: core profile
+
+OpenGL version string: 4.6.0 NVIDIA 595.78
+OpenGL shading language version string: 4.60 NVIDIA
+OpenGL context flags: (none)
+OpenGL profile mask: (none)
+
+OpenGL ES profile version string: OpenGL ES 3.2 NVIDIA 595.78
+OpenGL ES profile shading language version string: OpenGL ES GLSL ES 3.20
+

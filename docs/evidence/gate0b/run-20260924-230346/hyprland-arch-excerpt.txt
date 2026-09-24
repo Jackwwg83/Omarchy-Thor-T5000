@@ -1,0 +1,19 @@
+DEBUG from aquamarine ]: drm: Registered gpu /dev/dri/card3
+DEBUG from aquamarine ]: drm: Explicit sync supported
+DEBUG from aquamarine ]: drm: gpu /dev/dri/card3 becomes primary drm
+DEBUG from aquamarine ]: Created a GBM allocator with drm fd 24
+DEBUG from aquamarine ]: Created a GBM allocator with drm fd 25
+DEBUG from aquamarine ]: Creating CDRMRenderer on gpu /dev/dri/renderD130
+DEBUG from aquamarine ]: Creating CDRMRenderer on gpu /dev/dri/renderD130
+DEBUG ]: Using RENDERNODEFD: 21
+DEBUG ]: DRM DisplayNode syncobj timeline support: yes
+DEBUG ]: DRM RenderNode syncobj timeline support: yes
+DEBUG ]: eglDeviceFromDRMFD: Using device /dev/dri/card3
+DEBUG ]: [CMesaDRMProtocol] Advertising the EGL device render node /dev/dri/renderD129 instead of /dev/dri/renderD130
+DEBUG ]: [CLinuxDMABufV1Protocol] Advertising the EGL device render node /dev/dri/renderD129 as the main device
+DEBUG ]: [CDRMSyncobjManagerResource] New linux_syncobj at aaab1f224c40 for surface aaab1f1d1eb0
+DEBUG ]: [CDRMSyncobjManagerResource] New linux_syncobj at aaab1ee1bd80 for surface aaab1f406bb0
+DEBUG ]: [CDRMSyncobjManagerResource] New linux_syncobj at aaab1f301890 for surface aaab1f34c1c0
+DEBUG from aquamarine ]: drm: Explicit sync supported
+DEBUG from aquamarine ]: drm: Explicit sync supported
+DEBUG ]: Hyprland has reached the end.

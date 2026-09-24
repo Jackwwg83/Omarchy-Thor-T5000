@@ -1,0 +1,5 @@
+Sep 24 23:03:46 nvidia kernel: rfkill: input handler enabled
+Sep 24 23:03:46 nvidia kernel: NVRM: GPU0 nvAssertOkFailedNoLog: Assertion failed: Requested object not found [NV_ERR_OBJECT_NOT_FOUND] (0x00000057) returned from pRmApi->Control( pRmApi, hClient, hDevice, NV0080_CTRL_CMD_INTERNAL_MEMSYS_SET_ZBC_REFERENCED, &params, sizeof(params)) @ mem_mgr_gm107.c:283
+Sep 24 23:04:43 nvidia kernel: NVRM: GPU0 nvAssertOkFailedNoLog: Assertion failed: Requested object not found [NV_ERR_OBJECT_NOT_FOUND] (0x00000057) returned from pRmApi->Control( pRmApi, hClient, hDevice, NV0080_CTRL_CMD_INTERNAL_MEMSYS_SET_ZBC_REFERENCED, &params, sizeof(params)) @ mem_mgr_gm107.c:283
+Sep 24 23:05:21 nvidia kernel: NVRM: GPU0 nvAssertOkFailedNoLog: Assertion failed: Requested object not found [NV_ERR_OBJECT_NOT_FOUND] (0x00000057) returned from pRmApi->Control( pRmApi, hClient, hDevice, NV0080_CTRL_CMD_INTERNAL_MEMSYS_SET_ZBC_REFERENCED, &params, sizeof(params)) @ mem_mgr_gm107.c:283
+Sep 24 23:05:27 nvidia kernel: rfkill: input handler disabled

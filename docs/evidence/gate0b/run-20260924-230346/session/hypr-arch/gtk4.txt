@@ -1,0 +1,6 @@
+
+(gtk4-widget-factory:1390): Gtk-WARNING **: 15:04:53.181: Unable to acquire session bus: Cannot spawn a message bus without a machine-id: Invalid machine ID in /var/lib/dbus/machine-id or /etc/machine-id
+WARNING: Glycin running without sandbox.
+
+(gtk4-widget-factory:1390): GStreamer-Play-WARNING **: 15:04:53.454: GstPlay: scaletempo element not available. Audio pitch will not be preserved during trick modes
+Gdk-Message: 15:05:21.412: Lost connection to Wayland compositor.

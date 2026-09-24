@@ -1,0 +1,9 @@
+sample 1: {'crtc': 61, 'active': 1, 'fb': 144, 'w': 2560, 'h': 1440}
+sample 2: {'crtc': 61, 'active': 1, 'fb': 143, 'w': 2560, 'h': 1440}
+sample 3: {'crtc': 61, 'active': 1, 'fb': 147, 'w': 2560, 'h': 1440}
+sample 4: {'crtc': 61, 'active': 1, 'fb': 144, 'w': 2560, 'h': 1440}
+sample 5: {'crtc': 61, 'active': 1, 'fb': 143, 'w': 2560, 'h': 1440}
+sample 6: {'crtc': 61, 'active': 1, 'fb': 143, 'w': 2560, 'h': 1440}
+distinct framebuffers across samples: [143, 144, 147]
+SCANOUT PASS
+600 frames in 8.62s (exit 0)

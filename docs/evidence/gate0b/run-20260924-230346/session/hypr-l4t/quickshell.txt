@@ -1,0 +1,5 @@
+[32m  INFO[0m: Launching config: "/tmp/raytone-0b/shell.qml"
+[32m  INFO[0m: Shell ID: "4affc4d5690052351335405d1dd071f7" Path ID "4affc4d5690052351335405d1dd071f7"
+[32m  INFO[0m: Saving logs to "/tmp/xdg-l4t/quickshell/by-id/3l27jvlt/log.qslog"
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[0m: The Wayland connection broke. Did the Wayland compositor die?

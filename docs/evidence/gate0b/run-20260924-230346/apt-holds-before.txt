@@ -1,0 +1,10 @@
+nvidia-l4t-bootloader
+nvidia-l4t-kernel
+nvidia-l4t-kernel-dtbs
+nvidia-l4t-kernel-headers
+nvidia-l4t-kernel-module-configs
+nvidia-l4t-kernel-nvgpu
+nvidia-l4t-kernel-oot-headers
+nvidia-l4t-kernel-oot-modules
+nvidia-l4t-kernel-openrm
+nvidia-l4t-kernel-partitions

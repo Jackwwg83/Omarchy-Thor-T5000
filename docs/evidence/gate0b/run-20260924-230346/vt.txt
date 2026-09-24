@@ -1,0 +1,4 @@
+active VT before l4t: tty1
+active VT after l4t: tty1
+active VT before arch: tty1
+active VT after arch: tty1

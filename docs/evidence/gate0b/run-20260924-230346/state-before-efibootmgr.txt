@@ -1,0 +1,15 @@
+BootCurrent: 0001
+Timeout: 5 seconds
+BootOrder: 0004,0001,0000,0002,0003
+Boot0000* Enter Setup	FvVol(b175f7b7-0cb0-446e-b338-0e0d0f688de8)/FvFile(462caa21-7614-4503-836e-8ab6f4662331)
+      dp: 04 07 14 00 b7 f7 75 b1 b0 0c 6e 44 b3 38 0e 0d 0f 68 8d e8 / 04 06 14 00 21 aa 2c 46 14 76 03 45 83 6e 8a b6 f4 66 23 31 / 7f ff 04 00
+Boot0001* UEFI XG7000-2TB 2280 9C51015000022 1	VenHw(1e5a432c-0466-4d31-b009-d4d9239271d3)/MemoryMapped(11,0xa808480000,0xa808483fff)/PciRoot(0x5)/Pci(0x0,0x0)/Pci(0x0,0x0)/NVMe(0x1,A8-43-97-00-00-00-00-22){auto_created_boot_option}
+      dp: 01 04 14 00 2c 43 5a 1e 66 04 31 4d b0 09 d4 d9 23 92 71 d3 / 01 03 18 00 0b 00 00 00 00 00 48 08 a8 00 00 00 ff 3f 48 08 a8 00 00 00 / 02 01 0c 00 d0 41 03 0a 05 00 00 00 / 01 01 06 00 00 00 / 01 01 06 00 00 00 / 03 17 10 00 01 00 00 00 a8 43 97 00 00 00 00 22 / 7f ff 04 00
+    data: 4e ac 08 81 11 9f 59 4d 85 0e e2 1a 52 2c 59 b2
+Boot0002* BootManagerMenuApp	FvVol(b175f7b7-0cb0-446e-b338-0e0d0f688de8)/FvFile(eec25bdc-67f2-4d95-b1d5-f81b2039d11d)
+      dp: 04 07 14 00 b7 f7 75 b1 b0 0c 6e 44 b3 38 0e 0d 0f 68 8d e8 / 04 06 14 00 dc 5b c2 ee f2 67 95 4d b1 d5 f8 1b 20 39 d1 1d / 7f ff 04 00
+Boot0003* UEFI Shell	FvVol(b175f7b7-0cb0-446e-b338-0e0d0f688de8)/FvFile(7c04a583-9e3e-4f1c-ad65-e05268d0b4d1)
+      dp: 04 07 14 00 b7 f7 75 b1 b0 0c 6e 44 b3 38 0e 0d 0f 68 8d e8 / 04 06 14 00 83 a5 04 7c 3e 9e 1c 4f ad 65 e0 52 68 d0 b4 d1 / 7f ff 04 00
+Boot0004* UEFI JZAO USB3.2 Gen1 2797824271339930	VenHw(1e5a432c-0466-4d31-b009-d4d9239271d3)/MemoryMapped(11,0xa80aa10000,0xa80aa4ffff)/USB(5,0)/USB(2,0){auto_created_boot_option}
+      dp: 01 04 14 00 2c 43 5a 1e 66 04 31 4d b0 09 d4 d9 23 92 71 d3 / 01 03 18 00 0b 00 00 00 00 00 a1 0a a8 00 00 00 ff ff a4 0a a8 00 00 00 / 03 05 06 00 05 00 / 03 05 06 00 02 00 / 7f ff 04 00
+    data: 4e ac 08 81 11 9f 59 4d 85 0e e2 1a 52 2c 59 b2

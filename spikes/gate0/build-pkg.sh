@@ -17,9 +17,9 @@ inside_build() {
   setup_root
   local name=$1 src=$2 b=/build/$1
   setup_packages base-devel
-  mkdir -p "$ROOT/build" "$ROOT/build-home"
+  mkdir -p "$ROOT/build/out" "$ROOT/build-home"
   rm -rf "$ROOT$b" && cp -r "$src" "$ROOT$b"
-  chown -R 1000:1000 "$ROOT$b" "$ROOT/build-home"
+  chown -R 1000:1000 "$ROOT$b" "$ROOT/build/out" "$ROOT/build-home"
   # Dependencies as root (makepkg -s would need sudo inside the root).
   in_root bash -c "cd $b && source PKGBUILD && pacman -S --noconfirm --needed --asdeps \"\${depends[@]%%[<>=]*}\" \"\${makedepends[@]%%[<>=]*}\""
   timeout 7200 chroot --userspec=1000:1000 "$ROOT" /usr/bin/env -i PATH=/usr/bin HOME=/build-home LANG=C.UTF-8 \

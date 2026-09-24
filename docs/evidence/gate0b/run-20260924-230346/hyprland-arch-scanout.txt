@@ -1,0 +1,5 @@
+sample 1: {'crtc': 61, 'active': 1, 'fb': 145, 'w': 2560, 'h': 1440}
+sample 2: {'crtc': 61, 'active': 1, 'fb': 152, 'w': 2560, 'h': 1440}
+sample 3: {'crtc': 61, 'active': 1, 'fb': 152, 'w': 2560, 'h': 1440}
+distinct framebuffers across samples: [145, 152]
+SCANOUT PASS
