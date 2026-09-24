@@ -1,0 +1,13 @@
+EGL devices: 5
+  device 0: drm=/dev/dri/card3 render=/dev/dri/renderD129
+  device 1: drm=/dev/dri/card3 render=/dev/dri/renderD130
+  device 2: drm=/dev/dri/card2 render=/dev/dri/renderD129
+  device 3: drm=/dev/dri/card1 render=/dev/dri/renderD128
+  device 4: drm=- render=-
+PASS open DRM node
+node /dev/dri/card2 driver nvidia-drm
+PASS gbm_create_device
+gbm backend: nvidia
+FAIL eglInitialize on GBM platform with a real gbm_device
+   egl error 0x3001
+exit: 1

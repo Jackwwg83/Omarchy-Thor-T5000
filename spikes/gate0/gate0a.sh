@@ -23,7 +23,7 @@ L4T_DIRS=(/usr/lib/aarch64-linux-gnu/nvidia /usr/lib/aarch64-linux-gnu/tegra-egl
 ALLOW_RE='^(libnv|libcuda|libGLX_nvidia|libEGL_nvidia|libGLES(v1_CM|v2)_nvidia|libtegra|libjetsonpower|libgstnv|libv4l2_nv|libVkLayer_json_gen|libVkSCLayer|libvulkansc)'
 GPU_NODES=(/dev/nvidia0 /dev/nvidia1 /dev/nvidiactl /dev/nvidia-modeset /dev/nvidia-uvm /dev/nvidia-uvm-tools
            /dev/host1x-fence /dev/nvmap)
-PROBE_PKGS=(mesa libglvnd vulkan-icd-loader drm_info mesa-utils vulkan-tools)
+PROBE_PKGS=(mesa libglvnd vulkan-icd-loader drm-info mesa-utils vulkan-tools gcc pkgconf libdrm)
 # Capabilities the package manager never needs; dropping them also keeps it
 # from loading modules, remounting efivarfs or touching raw devices.
 DROP_CAPS=-sys_module,-sys_rawio,-sys_admin,-sys_ptrace,-sys_boot,-sys_time,-mknod,-sys_pacct,-syslog,-mac_admin,-mac_override,-wake_alarm,-block_suspend,-bpf,-perfmon,-linux_immutable,-sys_tty_config,-lease
@@ -60,7 +60,9 @@ fetch_rootfs() (
 host_facts() {
   local out=$CACHE/l4t-host p m
   mkdir -p "$out/maintscripts" "$out/etc"
-  dpkg-query -W -f='${Package}\t${Version}\n' 'nvidia-l4t-*' > "$out/packages.tsv"
+  # -W also lists packages dpkg knows but has not installed (e.g. the nvgpu set); keep installed ones.
+  dpkg-query -W -f='${db:Status-Abbrev}\t${Package}\t${Version}\n' 'nvidia-l4t-*' |
+    awk -F'\t' '$1 ~ /^ii/ {print $2 "\t" $3}' > "$out/packages.tsv"
   local pkgs=()
   mapfile -t pkgs < <(cut -f1 "$out/packages.tsv")
   for p in "${pkgs[@]}"; do dpkg -L "$p" | sed "s|^|$p\t|"; done > "$out/files.tsv"
@@ -77,7 +79,9 @@ host_facts() {
 }
 
 in_root() { # run as root inside the probe root with dangerous capabilities dropped
-  setpriv --bounding-set "$DROP_CAPS" -- chroot "$ROOT" /usr/bin/env -i PATH=/usr/bin HOME=/root LANG=C.UTF-8 "$@"
+  # no_new_privs lets pacman 7 apply its Landlock download sandbox without CAP_SYS_ADMIN.
+  setpriv --no-new-privs --bounding-set "$DROP_CAPS" -- \
+    chroot "$ROOT" /usr/bin/env -i PATH=/usr/bin HOME=/root LANG=C.UTF-8 "$@"
 }
 
 PASS=() FAIL=()
@@ -104,6 +108,8 @@ inside() {
     rm -rf "$ROOT" && mv "$ROOT.partial" "$ROOT"
   fi
 
+  # The root must be a mount point, as arch-chroot does, or pacman's disk space check fails.
+  mount --bind "$ROOT" "$ROOT"
   # Private /dev with only the basic nodes; GPU nodes are added for the probes.
   mount -t proc proc "$ROOT/proc"
   mount -t sysfs -o ro,nosuid,nodev,noexec sysfs "$ROOT/sys"
@@ -127,15 +133,17 @@ inside() {
     in_root pacman-key --populate archlinuxarm
     if ! in_root pacman -Sy --noconfirm archlinuxarm-keyring 2>&1 | tee "$EVID/pacman-keyring.txt"; then
       grep -qi -E 'sandbox|landlock' "$EVID/pacman-keyring.txt" || exit 1
-      echo DisableSandbox >> "$ROOT/etc/pacman.conf"   # only when the download sandbox is the failure
+      # Only when the download sandbox is the failure; the option belongs in [options].
+      grep -q '^DisableSandbox' "$ROOT/etc/pacman.conf" ||
+        sed -i '/^\[options\]/a DisableSandbox' "$ROOT/etc/pacman.conf"
       in_root pacman -Sy --noconfirm archlinuxarm-keyring
     fi
     if in_root pacman -Q linux-aarch64 >/dev/null 2>&1; then in_root pacman -Rdd --noconfirm linux-aarch64; fi
     in_root pacman -Su --noconfirm
-    in_root pacman -S --noconfirm --needed "${PROBE_PKGS[@]}"
-    in_root gpgconf --homedir /etc/pacman.d/gnupg --kill all || true
     touch "$ROOT/.raytone-probe-ready"
   fi
+  in_root pacman -S --noconfirm --needed "${PROBE_PKGS[@]}"
+  in_root gpgconf --homedir /etc/pacman.d/gnupg --kill all || true
 
   # Host L4T libraries, read-only at their own paths, plus an allowlisted loader directory.
   local d f base farm=$ROOT/usr/lib/raytone-l4t
@@ -178,18 +186,35 @@ inside() {
       ldd /usr/lib/raytone-l4t/\$l | grep -q 'not found' && rc=1; done; exit \$rc"
   probe drm_info drm_info
   probe drm_info_json drm_info -j
-  probe egl_device_nvidia env __EGL_VENDOR_LIBRARY_FILENAMES=/etc/glvnd/egl_vendor.d/10_nvidia.json eglinfo -B -p device
-  probe egl_device_default eglinfo -B -p device
   probe egl_surfaceless env __EGL_VENDOR_LIBRARY_FILENAMES=/etc/glvnd/egl_vendor.d/10_nvidia.json eglinfo -B -p surfaceless
-  probe egl_gbm eglinfo -B -p gbm
+  # eglinfo passes EGL_DEFAULT_DISPLAY for GBM, which NVIDIA's GBM platform rejects; gbmprobe uses a real device.
+  probe egl_gbm_default_display eglinfo -B -p gbm
   probe vulkan vulkaninfo --summary
-  probe kms_params bash -c 'grep -H . /sys/module/nvidia_drm/parameters/* /sys/module/nvidia_modeset/parameters/*'
+  grep -H . /sys/module/nvidia_drm/parameters/* /sys/module/nvidia_modeset/parameters/* > "$EVID/kms_params.txt" 2>&1 || true
+
+  # DRM nodes by what they are, since card/renderD numbers can change between boots.
+  local node nodes=() dev
+  rm -f "$EVID"/egl_device_*.txt "$EVID/egl_gbm.txt" && : > "$EVID/drm-nodes.txt"
+  for node in /sys/class/drm/*; do
+    [[ $(basename "$node") =~ ^(card|renderD)[0-9]+$ ]] || continue
+    dev=$(cat "$node/device/uevent" 2>/dev/null)
+    if [[ $dev == *OF_COMPATIBLE_0=nvidia,tegra264-display* || $dev == *PCI_ID=10DE:2B00* ]]; then
+      nodes+=("/dev/dri/$(basename "$node")")
+      echo "$(basename "$node"): $(grep -E '^(DRIVER|OF_COMPATIBLE_0|PCI_ID)=' "$node/device/uevent" | tr '\n' ' ')" >> "$EVID/drm-nodes.txt"
+    fi
+  done
+  cp "$(dirname "$SCRIPT")/gbmprobe.c" "$ROOT/tmp/gbmprobe.c"
+  probe gbmprobe_build bash -c 'cd /tmp && gcc -O1 -Wall -o gbmprobe gbmprobe.c $(pkg-config --cflags --libs gbm egl glesv2 libdrm)'
+  for node in "${nodes[@]}"; do
+    probe "gbmprobe_$(basename "$node")" /tmp/gbmprobe "$node"
+    probe "devplat_$(basename "$node")" /tmp/gbmprobe --device-platform "$node"
+  done
 
   {
     echo "driver: $drv"
     echo "pass: ${PASS[*]:-none}"
     echo "fail: ${FAIL[*]:-none}"
-    echo "nvidia in EGL device probe: $(grep -c -i nvidia "$EVID/egl_device_nvidia.txt" || true) lines"
+    for f in "$EVID"/gbmprobe_*D*.txt "$EVID"/gbmprobe_card*.txt; do echo "$(basename "$f" .txt): $(grep '^RESULT' "$f" || echo 'no result')"; done
     echo "nvidia in Vulkan probe: $(grep -c -i 'NVIDIA Thor' "$EVID/vulkan.txt" || true) lines"
     echo "not proven here: page flips, compositor behaviour, seat permissions, boot, module selection"
   } > "$EVID/summary.txt"

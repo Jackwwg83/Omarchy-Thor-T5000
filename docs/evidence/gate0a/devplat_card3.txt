@@ -1,0 +1,38 @@
+MESA: error: ZINK: failed to choose pdev
+MESA-EGL: warning: egl: failed to create dri2 screen
+MESA: error: ZINK: failed to choose pdev
+MESA-EGL: warning: egl: failed to create dri2 screen
+MESA-EGL: warning: pci id for fd 21: 10de:2b00, driver (null)
+pci id for fd 22: 10de:2b00, driver (null)
+pci id for fd 23: 10de:2b00, driver (null)
+MESA-EGL: warning: egl: failed to create dri2 screen
+MESA-EGL: warning: pci id for fd 21: 10de:2b00, driver (null)
+pci id for fd 22: 10de:2b00, driver (null)
+pci id for fd 23: 10de:2b00, driver (null)
+MESA-EGL: warning: egl: failed to create dri2 screen
+MESA-EGL: warning: pci id for fd 21: 10de:2b00, driver (null)
+failed to open GPU device: Invalid argument
+MESA-EGL: warning: egl: failed to create dri2 screen
+failed to open GPU device: Invalid argument
+MESA-EGL: warning: egl: failed to create dri2 screen
+PASS allocator gbm_create_device
+== egl device 0 (drm=/dev/dri/card3 render=/dev/dri/renderD129) <- buffers from /dev/dri/card3
+PASS device-platform eglInitialize
+PASS device-platform GLES2 context without config
+PASS B[egl device 0 (drm=/dev/dri/card3 render=/dev/dri/renderD129) <- buffers from /dev/dri/card3]: gbm_bo_create_with_modifiers2 scanout|rendering
+   bo: modifier=0x0300000000606014 stride=7680 offset=0 fd=21
+PASS B[egl device 0 (drm=/dev/dri/card3 render=/dev/dri/renderD129) <- buffers from /dev/dri/card3]: export dma-buf fd
+PASS B[egl device 0 (drm=/dev/dri/card3 render=/dev/dri/renderD129) <- buffers from /dev/dri/card3]: eglCreateImage from dma-buf
+   framebuffer status 0x8cd5
+PASS B[egl device 0 (drm=/dev/dri/card3 render=/dev/dri/renderD129) <- buffers from /dev/dri/card3]: FBO on imported dma-buf is complete (Orin fails here)
+   pixel read back: 0 255 0 255
+PASS B[egl device 0 (drm=/dev/dri/card3 render=/dev/dri/renderD129) <- buffers from /dev/dri/card3]: render into imported buffer and read back green
+PASS B[egl device 0 (drm=/dev/dri/card3 render=/dev/dri/renderD129) <- buffers from /dev/dri/card3]: sample path: EGLImage as GL texture
+== egl device 1 (drm=/dev/dri/card3 render=/dev/dri/renderD130) <- buffers from /dev/dri/card3
+FAIL device-platform eglInitialize
+== egl device 2 (drm=/dev/dri/card2 render=/dev/dri/renderD129) <- buffers from /dev/dri/card3
+FAIL device-platform eglInitialize
+== egl device 3 (drm=/dev/dri/card1 render=/dev/dri/renderD128) <- buffers from /dev/dri/card3
+FAIL device-platform eglInitialize
+RESULT FAIL: 3 failure(s)
+exit: 1

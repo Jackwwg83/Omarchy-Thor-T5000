@@ -1,0 +1,9 @@
+driver: 595.78
+pass: versions ldcache ldd drm_info drm_info_json egl_surfaceless vulkan gbmprobe_build
+fail: egl_gbm_default_display (exit 1) gbmprobe_card2 (exit 1) devplat_card2 (exit 1) gbmprobe_card3 (exit 1) devplat_card3 (exit 1) gbmprobe_renderD129 (exit 1) devplat_renderD129 (exit 1) gbmprobe_renderD130 (exit 1) devplat_renderD130 (exit 1)
+gbmprobe_renderD129: RESULT FAIL: 1 failure(s)
+gbmprobe_renderD130: no result
+gbmprobe_card2: no result
+gbmprobe_card3: RESULT FAIL: 1 failure(s)
+nvidia in Vulkan probe: 1 lines
+not proven here: page flips, compositor behaviour, seat permissions, boot, module selection

@@ -1,0 +1,15 @@
+/sys/module/nvidia_drm/parameters/fbdev:Y
+/sys/module/nvidia_drm/parameters/modeset:Y
+/sys/module/nvidia_modeset/parameters/conceal_vrr_caps:N
+/sys/module/nvidia_modeset/parameters/config_file:(null)
+/sys/module/nvidia_modeset/parameters/debug:0
+/sys/module/nvidia_modeset/parameters/debug_force_color_space:0
+/sys/module/nvidia_modeset/parameters/disable_hdmi_frl:Y
+/sys/module/nvidia_modeset/parameters/disable_vrr_memclk_switch:N
+/sys/module/nvidia_modeset/parameters/enable_overlay_layers:Y
+/sys/module/nvidia_modeset/parameters/fail_alloc_core_channel:-1
+/sys/module/nvidia_modeset/parameters/fail_malloc:-1
+/sys/module/nvidia_modeset/parameters/hdmi_deepcolor:N
+/sys/module/nvidia_modeset/parameters/malloc_verbose:N
+/sys/module/nvidia_modeset/parameters/opportunistic_display_sync:Y
+/sys/module/nvidia_modeset/parameters/output_rounding_fix:Y

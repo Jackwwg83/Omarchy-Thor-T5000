@@ -1,0 +1,4 @@
+card2: DRIVER=nvidia PCI_ID=10DE:2B00 
+card3: DRIVER=nv_platform OF_COMPATIBLE_0=nvidia,tegra264-display 
+renderD129: DRIVER=nvidia PCI_ID=10DE:2B00 
+renderD130: DRIVER=nv_platform OF_COMPATIBLE_0=nvidia,tegra264-display 

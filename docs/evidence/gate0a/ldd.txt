@@ -1,0 +1,96 @@
+== libEGL_nvidia.so.0
+ldd: warning: you do not have execution permission for `/usr/lib/raytone-l4t/libEGL_nvidia.so.0'
+	linux-vdso.so.1 (0x0000ffff951e9000)
+	libpthread.so.0 => /usr/lib/libpthread.so.0 (0x0000ffff95000000)
+	librt.so.1 => /usr/lib/librt.so.1 (0x0000ffff94fd0000)
+	libc.so.6 => /usr/lib/libc.so.6 (0x0000ffff94e00000)
+	libdl.so.2 => /usr/lib/libdl.so.2 (0x0000ffff94dd0000)
+	libnvidia-glsi.so.595.78 => /usr/lib/raytone-l4t/libnvidia-glsi.so.595.78 (0x0000ffff94d10000)
+	/usr/lib/ld-linux-aarch64.so.1 (0x0000ffff951a0000)
+	libnvidia-rmapi-tegra.so.595.78 => /usr/lib/raytone-l4t/libnvidia-rmapi-tegra.so.595.78 (0x0000ffff94ca0000)
+ldd: warning: you do not have execution permission for `/usr/lib/raytone-l4t/libEGL_nvidia.so.0'
+== libGLX_nvidia.so.0
+ldd: warning: you do not have execution permission for `/usr/lib/raytone-l4t/libGLX_nvidia.so.0'
+	linux-vdso.so.1 (0x0000ffffba9bc000)
+	libnvidia-glsi.so.595.78 => /usr/lib/raytone-l4t/libnvidia-glsi.so.595.78 (0x0000ffffba760000)
+	libnvidia-tls.so.595.78 => /usr/lib/raytone-l4t/libnvidia-tls.so.595.78 (0x0000ffffba740000)
+	libnvidia-glcore.so.595.78 => /usr/lib/raytone-l4t/libnvidia-glcore.so.595.78 (0x0000ffffb8e50000)
+	libX11.so.6 => /usr/lib/libX11.so.6 (0x0000ffffb8ce0000)
+	libXext.so.6 => /usr/lib/libXext.so.6 (0x0000ffffb8ca0000)
+	libc.so.6 => /usr/lib/libc.so.6 (0x0000ffffb8ad0000)
+	libdl.so.2 => /usr/lib/libdl.so.2 (0x0000ffffb8aa0000)
+	libpthread.so.0 => /usr/lib/libpthread.so.0 (0x0000ffffb8a70000)
+	librt.so.1 => /usr/lib/librt.so.1 (0x0000ffffb8a40000)
+	libnvidia-rmapi-tegra.so.595.78 => /usr/lib/raytone-l4t/libnvidia-rmapi-tegra.so.595.78 (0x0000ffffb89d0000)
+	libm.so.6 => /usr/lib/libm.so.6 (0x0000ffffb88f0000)
+	libnvidia-gpucomp.so.595.78 => /usr/lib/raytone-l4t/libnvidia-gpucomp.so.595.78 (0x0000ffffb32d0000)
+	libxcb.so.1 => /usr/lib/libxcb.so.1 (0x0000ffffb3290000)
+	/usr/lib/ld-linux-aarch64.so.1 (0x0000ffffba970000)
+	libXau.so.6 => /usr/lib/libXau.so.6 (0x0000ffffb3260000)
+	libXdmcp.so.6 => /usr/lib/libXdmcp.so.6 (0x0000ffffb3230000)
+ldd: warning: you do not have execution permission for `/usr/lib/raytone-l4t/libGLX_nvidia.so.0'
+== libnvidia-allocator.so.1
+ldd: warning: you do not have execution permission for `/usr/lib/raytone-l4t/libnvidia-allocator.so.1'
+	linux-vdso.so.1 (0x0000ffff95b78000)
+	libc.so.6 => /usr/lib/libc.so.6 (0x0000ffff95920000)
+	libdl.so.2 => /usr/lib/libdl.so.2 (0x0000ffff958f0000)
+	libnvidia-rmapi-tegra.so.595.78 => /usr/lib/raytone-l4t/libnvidia-rmapi-tegra.so.595.78 (0x0000ffff95880000)
+	/usr/lib/ld-linux-aarch64.so.1 (0x0000ffff95b30000)
+	libpthread.so.0 => /usr/lib/libpthread.so.0 (0x0000ffff95850000)
+ldd: warning: you do not have execution permission for `/usr/lib/raytone-l4t/libnvidia-allocator.so.1'
+== libnvidia-eglcore.so.595.78
+ldd: warning: you do not have execution permission for `/usr/lib/raytone-l4t/libnvidia-eglcore.so.595.78'
+	linux-vdso.so.1 (0x0000ffff9294b000)
+	libpthread.so.0 => /usr/lib/libpthread.so.0 (0x0000ffff91180000)
+	libm.so.6 => /usr/lib/libm.so.6 (0x0000ffff910a0000)
+	libc.so.6 => /usr/lib/libc.so.6 (0x0000ffff90ed0000)
+	libdl.so.2 => /usr/lib/libdl.so.2 (0x0000ffff90ea0000)
+	libnvidia-rmapi-tegra.so.595.78 => /usr/lib/raytone-l4t/libnvidia-rmapi-tegra.so.595.78 (0x0000ffff90e30000)
+	libnvidia-glsi.so.595.78 => /usr/lib/raytone-l4t/libnvidia-glsi.so.595.78 (0x0000ffff90d70000)
+	libnvidia-gpucomp.so.595.78 => /usr/lib/raytone-l4t/libnvidia-gpucomp.so.595.78 (0x0000ffff8b750000)
+	/usr/lib/ld-linux-aarch64.so.1 (0x0000ffff92900000)
+	librt.so.1 => /usr/lib/librt.so.1 (0x0000ffff8b720000)
+ldd: warning: you do not have execution permission for `/usr/lib/raytone-l4t/libnvidia-eglcore.so.595.78'
+== libnvidia-egl-gbm.so.1
+ldd: warning: you do not have execution permission for `/usr/lib/raytone-l4t/libnvidia-egl-gbm.so.1'
+	linux-vdso.so.1 (0x0000ffff7fd9d000)
+	libpthread.so.0 => /usr/lib/libpthread.so.0 (0x0000ffff7fd10000)
+	libc.so.6 => /usr/lib/libc.so.6 (0x0000ffff7fb40000)
+	libdl.so.2 => /usr/lib/libdl.so.2 (0x0000ffff7fb10000)
+	libdrm.so.2 => /usr/lib/libdrm.so.2 (0x0000ffff7fad0000)
+	libgbm.so.1 => /usr/lib/libgbm.so.1 (0x0000ffff7faa0000)
+	/usr/lib/ld-linux-aarch64.so.1 (0x0000ffff7fd60000)
+	libexpat.so.1 => /usr/lib/libexpat.so.1 (0x0000ffff7fa50000)
+	libm.so.6 => /usr/lib/libm.so.6 (0x0000ffff7f970000)
+ldd: warning: you do not have execution permission for `/usr/lib/raytone-l4t/libnvidia-egl-gbm.so.1'
+== libnvidia-egl-wayland.so.1
+ldd: warning: you do not have execution permission for `/usr/lib/raytone-l4t/libnvidia-egl-wayland.so.1'
+	linux-vdso.so.1 (0x0000ffffb437d000)
+	libpthread.so.0 => /usr/lib/libpthread.so.0 (0x0000ffffb42d0000)
+	libc.so.6 => /usr/lib/libc.so.6 (0x0000ffffb4100000)
+	libdl.so.2 => /usr/lib/libdl.so.2 (0x0000ffffb40d0000)
+	libwayland-client.so.0 => /usr/lib/libwayland-client.so.0 (0x0000ffffb4090000)
+	libwayland-server.so.0 => /usr/lib/libwayland-server.so.0 (0x0000ffffb4050000)
+	libdrm.so.2 => /usr/lib/libdrm.so.2 (0x0000ffffb4010000)
+	/usr/lib/ld-linux-aarch64.so.1 (0x0000ffffb4330000)
+	libffi.so.8 => /usr/lib/libffi.so.8 (0x0000ffffb3fe0000)
+ldd: warning: you do not have execution permission for `/usr/lib/raytone-l4t/libnvidia-egl-wayland.so.1'
+== libnvidia-rmapi-tegra.so.595.78
+ldd: warning: you do not have execution permission for `/usr/lib/raytone-l4t/libnvidia-rmapi-tegra.so.595.78'
+	linux-vdso.so.1 (0x0000ffff85025000)
+	libpthread.so.0 => /usr/lib/libpthread.so.0 (0x0000ffff84f40000)
+	libc.so.6 => /usr/lib/libc.so.6 (0x0000ffff84d70000)
+	libdl.so.2 => /usr/lib/libdl.so.2 (0x0000ffff84d40000)
+	/usr/lib/ld-linux-aarch64.so.1 (0x0000ffff84fe0000)
+ldd: warning: you do not have execution permission for `/usr/lib/raytone-l4t/libnvidia-rmapi-tegra.so.595.78'
+== libcuda.so.1
+ldd: warning: you do not have execution permission for `/usr/lib/raytone-l4t/libcuda.so.1'
+	linux-vdso.so.1 (0x0000ffff7fe7d000)
+	libpthread.so.0 => /usr/lib/libpthread.so.0 (0x0000ffff7fe10000)
+	libm.so.6 => /usr/lib/libm.so.6 (0x0000ffff7fd30000)
+	libc.so.6 => /usr/lib/libc.so.6 (0x0000ffff7fb60000)
+	/usr/lib/ld-linux-aarch64.so.1 (0x0000ffff7fe40000)
+	libdl.so.2 => /usr/lib/libdl.so.2 (0x0000ffff7fb30000)
+	librt.so.1 => /usr/lib/librt.so.1 (0x0000ffff7fb00000)
+ldd: warning: you do not have execution permission for `/usr/lib/raytone-l4t/libcuda.so.1'
+exit: 0

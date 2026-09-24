@@ -1,0 +1,11 @@
+mesa 1:26.2.3-1
+libglvnd 1.7.0-3
+vulkan-icd-loader 1.4.357.0-1
+drm-info 2.10.0-1
+mesa-utils 9.0.0-7
+vulkan-tools 1.4.357.0-1
+gcc 16.1.1+r12+g301eb08fa2c5-1
+pkgconf 3.0.7-1
+libdrm 2.4.134-1
+glibc 2.43+r22+g8362e8ce10b2-2
+exit: 0

@@ -1,0 +1,19 @@
+	libvulkan.so.1 (libc6,AArch64) => /usr/lib/libvulkan.so.1
+	libvulkan.so (libc6,AArch64) => /usr/lib/libvulkan.so
+	libnvidia-allocator.so.1 (libc6,AArch64) => /usr/lib/raytone-l4t/libnvidia-allocator.so.1
+	libnvidia-allocator.so (libc6,AArch64) => /usr/lib/raytone-l4t/libnvidia-allocator.so
+	libgbm.so.1 (libc6,AArch64) => /usr/lib/libgbm.so.1
+	libgbm.so (libc6,AArch64) => /usr/lib/libgbm.so
+	libcuda.so.1 (libc6,AArch64) => /usr/lib/raytone-l4t/libcuda.so.1
+	libcuda.so (libc6,AArch64) => /usr/lib/raytone-l4t/libcuda.so
+	libGLX_nvidia.so.0 (libc6,AArch64) => /usr/lib/raytone-l4t/libGLX_nvidia.so.0
+	libGLX_mesa.so.0 (libc6,AArch64) => /usr/lib/libGLX_mesa.so.0
+	libGLX_mesa.so (libc6,AArch64) => /usr/lib/libGLX_mesa.so
+	libGLX.so.0 (libc6,AArch64) => /usr/lib/libGLX.so.0
+	libGLX.so (libc6,AArch64) => /usr/lib/libGLX.so
+	libEGL_nvidia.so.0 (libc6,AArch64) => /usr/lib/raytone-l4t/libEGL_nvidia.so.0
+	libEGL_mesa.so.0 (libc6,AArch64) => /usr/lib/libEGL_mesa.so.0
+	libEGL_mesa.so (libc6,AArch64) => /usr/lib/libEGL_mesa.so
+	libEGL.so.1 (libc6,AArch64) => /usr/lib/libEGL.so.1
+	libEGL.so (libc6,AArch64) => /usr/lib/libEGL.so
+exit: 0

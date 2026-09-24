@@ -1,0 +1,19 @@
+Surfaceless platform:
+EGL API version: 1.5
+EGL vendor string: NVIDIA
+EGL version string: 1.5
+EGL client APIs: OpenGL_ES OpenGL
+OpenGL core profile vendor: NVIDIA Corporation
+OpenGL core profile renderer: NVIDIA Thor/PCIe
+OpenGL core profile version: 4.6.0 NVIDIA 595.78
+OpenGL core profile shading language version: 4.60 NVIDIA
+OpenGL compatibility profile vendor: NVIDIA Corporation
+OpenGL compatibility profile renderer: NVIDIA Thor/PCIe
+OpenGL compatibility profile version: 4.6.0 NVIDIA 595.78
+OpenGL compatibility profile shading language version: 4.60 NVIDIA
+OpenGL ES profile vendor: NVIDIA Corporation
+OpenGL ES profile renderer: NVIDIA Thor/PCIe
+OpenGL ES profile version: OpenGL ES 3.2 NVIDIA 595.78
+OpenGL ES profile shading language version: OpenGL ES GLSL ES 3.20
+
+exit: 0

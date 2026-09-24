@@ -1,0 +1,4 @@
+GBM platform:
+eglinfo: eglInitialize failed
+
+exit: 1

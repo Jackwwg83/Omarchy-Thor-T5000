@@ -1,0 +1,49 @@
+EGL devices: 5
+  device 0: drm=/dev/dri/card3 render=/dev/dri/renderD129
+  device 1: drm=/dev/dri/card3 render=/dev/dri/renderD130
+  device 2: drm=/dev/dri/card2 render=/dev/dri/renderD129
+  device 3: drm=/dev/dri/card1 render=/dev/dri/renderD128
+  device 4: drm=- render=-
+PASS open DRM node
+node /dev/dri/card3 driver nvidia-drm
+PASS gbm_create_device
+gbm backend: nvidia
+PASS eglInitialize on GBM platform with a real gbm_device
+EGL 1.5 vendor=NVIDIA
+PASS extension EGL_EXT_image_dma_buf_import
+PASS extension EGL_EXT_image_dma_buf_import_modifiers
+PASS extension EGL_KHR_image_base
+PASS extension EGL_KHR_surfaceless_context
+PASS extension EGL_ANDROID_native_fence_sync
+PASS extension EGL_KHR_wait_sync
+GBM display maps to EGL device drm=/dev/dri/card3
+PASS EGL config with native visual XRGB8888
+PASS GLES2 context
+GL renderer: NVIDIA Thor/PCIe | OpenGL ES 3.2 NVIDIA 595.78
+PASS A: gbm_surface_create XRGB8888 scanout|rendering
+PASS A: eglCreatePlatformWindowSurface on gbm_surface
+PASS A: eglMakeCurrent window surface
+PASS A: eglSwapBuffers
+PASS A: gbm_surface_lock_front_buffer
+   front buffer: format=0x34325258 modifier=0x0300000000606014 stride=7680 planes=1
+EGL modifiers for XRGB8888: 7
+   0x0300000000606010
+   0x0300000000606011
+   0x0300000000606012
+   0x0300000000606013
+   0x0300000000606014
+   0x0300000000606015
+   0x0000000000000000 (external only)
+PASS B[egl modifiers]: gbm_bo_create_with_modifiers2 scanout|rendering
+   bo: modifier=0x0300000000606014 stride=7680 offset=0 fd=25
+PASS B[egl modifiers]: export dma-buf fd
+PASS B[egl modifiers]: eglCreateImage from dma-buf
+   framebuffer status 0x8cd5
+PASS B[egl modifiers]: FBO on imported dma-buf is complete (Orin fails here)
+   pixel read back: 0 255 0 255
+PASS B[egl modifiers]: render into imported buffer and read back green
+PASS B[egl modifiers]: sample path: EGLImage as GL texture
+FAIL B[linear]: gbm_bo_create_with_modifiers2 scanout|rendering
+PASS explicit sync: export native fence fd
+RESULT FAIL: 1 failure(s)
+exit: 1
