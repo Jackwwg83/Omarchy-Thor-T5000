@@ -5,25 +5,35 @@
 # Spike code (see README.md): it answers one question and is then discarded in
 # favour of tested build tooling. Run as the normal user on the Thor. The only
 # privileged part runs in fresh mount and PID namespaces, so its mounts and any
-# leftover processes disappear when it exits.
+# leftover processes disappear when it exits. gate0b.sh sources this file for
+# the shared setup functions.
 set -euo pipefail
 shopt -s nullglob
 
-SCRIPT=$(readlink -f "$0")
+SCRIPT=$(readlink -f "${BASH_SOURCE[0]}")
 WORK=${WORK:-$HOME/raytone}
 ROOT=$WORK/probe-root
-EVID=$WORK/evidence/gate0a
+EVID=${EVID:-$WORK/evidence/gate0a}
 CACHE=$WORK/cache
 TARBALL=ArchLinuxARM-aarch64-latest.tar.gz
 MIRROR=${MIRROR:-http://os.archlinuxarm.org/os}
 ALARM_KEY=68B3537F39A313B3E574D06777193F152BDBE6A6
-L4T_DIRS=(/usr/lib/aarch64-linux-gnu/nvidia /usr/lib/aarch64-linux-gnu/tegra-egl /opt/nvidia/l4t-gpu-libs)
+L4T_NV=/usr/lib/aarch64-linux-gnu/nvidia
+L4T_DIRS=("$L4T_NV" /usr/lib/aarch64-linux-gnu/tegra-egl /opt/nvidia/l4t-gpu-libs)
 # Only NVIDIA-named libraries enter the loader path; L4T's own libvulkan,
-# libv4l and Ada runtime copies must not shadow Arch's.
+# libv4l and Ada runtime copies must not shadow Arch's. The EGL platform glue
+# (egl-wayland, egl-gbm) is registered by absolute path instead, so the L4T and
+# Arch builds can be swapped without touching the loader cache.
 ALLOW_RE='^(libnv|libcuda|libGLX_nvidia|libEGL_nvidia|libGLES(v1_CM|v2)_nvidia|libtegra|libjetsonpower|libgstnv|libv4l2_nv|libVkLayer_json_gen|libVkSCLayer|libvulkansc)'
+GLUE_RE='^libnvidia-egl-(wayland|gbm)\.so'
 GPU_NODES=(/dev/nvidia0 /dev/nvidia1 /dev/nvidiactl /dev/nvidia-modeset /dev/nvidia-uvm /dev/nvidia-uvm-tools
            /dev/host1x-fence /dev/nvmap)
 PROBE_PKGS=(mesa libglvnd vulkan-icd-loader drm-info mesa-utils vulkan-tools gcc pkgconf libdrm)
+# EGL platform glue per variant, each registered by absolute path in its own directory. Both keep
+# L4T's egl-gbm; "arch" swaps only egl-wayland for Arch's newer build, so an A/B has one variable.
+declare -A GLUE_DIR=([l4t]=/etc/raytone/egl-l4t [arch]=/etc/raytone/egl-arch)
+ARCH_EGL_WAYLAND=/usr/lib/libnvidia-egl-wayland.so.1
+GLUE=${GLUE:-l4t}
 # Capabilities the package manager never needs; dropping them also keeps it
 # from loading modules, remounting efivarfs or touching raw devices.
 DROP_CAPS=-sys_module,-sys_rawio,-sys_admin,-sys_ptrace,-sys_boot,-sys_time,-mknod,-sys_pacct,-syslog,-mac_admin,-mac_override,-wake_alarm,-block_suspend,-bpf,-perfmon,-linux_immutable,-sys_tty_config,-lease
@@ -89,7 +99,8 @@ probe() { # probe NAME CMD... : run as the unprivileged user, output to $EVID/NA
   local name=$1; shift
   local rc=0
   timeout 90 chroot --userspec=1000:1000 --groups=44,993 "$ROOT" \
-    /usr/bin/env -i PATH=/usr/bin HOME=/tmp LANG=C.UTF-8 "$@" > "$EVID/$name.txt" 2>&1 || rc=$?
+    /usr/bin/env -i PATH=/usr/bin HOME=/tmp LANG=C.UTF-8 \
+    __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS="${GLUE_DIR[$GLUE]}" "$@" > "$EVID/$name.txt" 2>&1 || rc=$?
   echo "exit: $rc" >> "$EVID/$name.txt"
   if (( rc == 0 )); then PASS+=("$name"); else FAIL+=("$name (exit $rc)"); fi
 }
@@ -97,20 +108,21 @@ probe() { # probe NAME CMD... : run as the unprivileged user, output to $EVID/NA
 bind_ro() { mkdir -p "$2"; mount --bind "$1" "$2"; mount -o remount,bind,ro "$2"; }
 bind_node() { touch "$2"; mount --bind "$1" "$2"; }
 
-inside() {
+require_namespace() {
   [[ ${RAYTONE_NS:-} == 1 && $$ -eq 1 && $EUID -eq 0 ]] ||
     { echo "inside: only reachable through the namespace wrapper" >&2; exit 1; }
   check_work
+}
 
+# Unpack once, then mount the root with a private /dev, sysfs read-only and own /run and /tmp.
+setup_root() {
   if [[ ! -f $ROOT/etc/arch-release ]]; then
     rm -rf "$ROOT.partial" && mkdir -p "$ROOT.partial"
     tar --xattrs --xattrs-include='*' --acls --numeric-owner -xpf "$CACHE/$TARBALL" -C "$ROOT.partial"
     rm -rf "$ROOT" && mv "$ROOT.partial" "$ROOT"
   fi
-
   # The root must be a mount point, as arch-chroot does, or pacman's disk space check fails.
   mount --bind "$ROOT" "$ROOT"
-  # Private /dev with only the basic nodes; GPU nodes are added for the probes.
   mount -t proc proc "$ROOT/proc"
   mount -t sysfs -o ro,nosuid,nodev,noexec sysfs "$ROOT/sys"
   mount -t tmpfs -o mode=0755,nosuid tmpfs "$ROOT/dev"
@@ -124,7 +136,9 @@ inside() {
   mount -t tmpfs -o mode=0755 tmpfs "$ROOT/run"
   mount -t tmpfs -o mode=1777 tmpfs "$ROOT/tmp"
   rm -f "$ROOT/etc/resolv.conf" && cat /etc/resolv.conf > "$ROOT/etc/resolv.conf"
+}
 
+setup_packages() { # setup_packages PKG... : keyring and full upgrade once, then the requested packages
   if [[ -n ${PKG_MIRROR:-} ]]; then
     printf 'Server = %s/$arch/$repo\n' "$PKG_MIRROR" > "$ROOT/etc/pacman.d/mirrorlist"
   fi
@@ -142,76 +156,108 @@ inside() {
     in_root pacman -Su --noconfirm
     touch "$ROOT/.raytone-probe-ready"
   fi
-  in_root pacman -S --noconfirm --needed "${PROBE_PKGS[@]}"
+  # Earlier probe runs wrote these registrations by hand; drop them unless a package owns them.
+  local f
+  for f in /usr/share/egl/egl_external_platform.d/{10_nvidia_wayland,15_nvidia_gbm}.json; do
+    [[ -e $ROOT$f ]] && ! in_root pacman -Qo "$f" >/dev/null 2>&1 && rm -f "$ROOT$f"
+  done
+  in_root pacman -S --noconfirm --needed "$@"
   in_root gpgconf --homedir /etc/pacman.d/gnupg --kill all || true
+}
 
-  # Host L4T libraries, read-only at their own paths, plus an allowlisted loader directory.
+# Host L4T libraries read-only at their own paths, an allowlisted loader directory, and registrations.
+setup_l4t() {
   local d f base farm=$ROOT/usr/lib/raytone-l4t
   for d in "${L4T_DIRS[@]}"; do bind_ro "$d" "$ROOT$d"; done
   rm -rf "$farm" && mkdir -p "$farm"
   : > "$EVID/l4t-excluded.txt"
-  for f in /usr/lib/aarch64-linux-gnu/nvidia/*.so* /usr/lib/aarch64-linux-gnu/tegra-egl/*.so* \
-           /opt/nvidia/l4t-gpu-libs/openrm/*.so*; do
+  for f in "$L4T_NV"/*.so* /usr/lib/aarch64-linux-gnu/tegra-egl/*.so* /opt/nvidia/l4t-gpu-libs/openrm/*.so*; do
     base=$(basename "$f")
-    if [[ ! $base =~ $ALLOW_RE ]]; then echo "$f" >> "$EVID/l4t-excluded.txt"; continue; fi
+    if [[ ! $base =~ $ALLOW_RE || $base =~ $GLUE_RE ]]; then echo "$f" >> "$EVID/l4t-excluded.txt"; continue; fi
     [[ ! -e $farm/$base ]] || { echo "duplicate library name $base" >&2; exit 1; }
     ln -s "$f" "$farm/$base"
   done
   echo /usr/lib/raytone-l4t > "$ROOT/etc/ld.so.conf.d/raytone-l4t.conf"
 
-  # Registrations taken from the host's own files.
-  mkdir -p "$ROOT/etc/glvnd/egl_vendor.d" "$ROOT/usr/share/egl/egl_external_platform.d" \
-           "$ROOT/usr/lib/gbm" "$ROOT/etc/vulkan/icd.d"
+  mkdir -p "$ROOT/etc/glvnd/egl_vendor.d" "$ROOT/usr/lib/gbm" "$ROOT/etc/vulkan/icd.d" \
+           "$ROOT${GLUE_DIR[l4t]}" "$ROOT${GLUE_DIR[arch]}"
   cp /usr/share/glvnd/egl_vendor.d/10_nvidia.json "$ROOT/etc/glvnd/egl_vendor.d/10_nvidia.json"
-  cp /usr/share/egl/egl_external_platform.d/nvidia_gbm.json "$ROOT/usr/share/egl/egl_external_platform.d/15_nvidia_gbm.json"
-  cp /usr/share/egl/egl_external_platform.d/nvidia_wayland.json "$ROOT/usr/share/egl/egl_external_platform.d/10_nvidia_wayland.json"
-  cp -L /usr/lib/aarch64-linux-gnu/nvidia/nvidia_icd.json "$ROOT/etc/vulkan/icd.d/nvidia_icd.json"
+  local reg='{"file_format_version":"1.0.0","ICD":{"library_path":"%s"}}\n'
+  # shellcheck disable=SC2059
+  {
+    printf "$reg" "$L4T_NV/libnvidia-egl-wayland.so.1" > "$ROOT${GLUE_DIR[l4t]}/10_nvidia_wayland.json"
+    printf "$reg" "$L4T_NV/libnvidia-egl-gbm.so.1" > "$ROOT${GLUE_DIR[l4t]}/15_nvidia_gbm.json"
+    printf "$reg" "$L4T_NV/libnvidia-egl-gbm.so.1" > "$ROOT${GLUE_DIR[arch]}/15_nvidia_gbm.json"
+    rm -f "$ROOT${GLUE_DIR[arch]}/10_nvidia_wayland.json"
+    [[ -e $ROOT$ARCH_EGL_WAYLAND ]] &&
+      printf "$reg" "$ARCH_EGL_WAYLAND" > "$ROOT${GLUE_DIR[arch]}/10_nvidia_wayland.json"
+  }
+  cp -L "$L4T_NV/nvidia_icd.json" "$ROOT/etc/vulkan/icd.d/nvidia_icd.json"
   ln -sfn "$(readlink -f /usr/lib/aarch64-linux-gnu/gbm/nvidia-drm_gbm.so)" "$ROOT/usr/lib/gbm/nvidia-drm_gbm.so"
   ln -sfn "$(readlink -f /usr/lib/aarch64-linux-gnu/gbm/tegra_gbm.so)" "$ROOT/usr/lib/gbm/tegra_gbm.so"
   in_root ldconfig
+}
 
-  # GPU and display nodes for the probes only; udev database read-only, no control socket.
+# GPU and display nodes; udev database read-only, never its control socket.
+add_gpu_nodes() {
+  local n
   for n in "${GPU_NODES[@]}"; do [[ -e $n ]] && bind_node "$n" "$ROOT$n"; done
   bind_ro /dev/dri "$ROOT/dev/dri"
   [[ -d /dev/nvidia-caps ]] && bind_ro /dev/nvidia-caps "$ROOT/dev/nvidia-caps"
   [[ -d /run/udev/data ]] && bind_ro /run/udev/data "$ROOT/run/udev/data"
+  return 0
+}
 
-  local drv
+# DRM nodes by what they are, since card/renderD numbers can change between boots.
+thor_drm_nodes() {
+  local node dev
+  for node in /sys/class/drm/*; do
+    [[ $(basename "$node") =~ ^(card|renderD)[0-9]+$ ]] || continue
+    dev=$(cat "$node/device/uevent" 2>/dev/null)
+    [[ $dev == *OF_COMPATIBLE_0=nvidia,tegra264-display* || $dev == *PCI_ID=10DE:2B00* ]] && echo "/dev/dri/$(basename "$node")"
+  done
+  return 0
+}
+display_card() { # the KMS node with connectors
+  local node
+  for node in $(thor_drm_nodes); do
+    [[ $(basename "$node") == card* ]] || continue
+    grep -q OF_COMPATIBLE_0=nvidia,tegra264-display "/sys/class/drm/$(basename "$node")/device/uevent" && echo "$node"
+  done
+  return 0
+}
+
+probes_0a() {
+  local drv node
   drv=$(modinfo -F version nvidia)
   probe versions pacman -Q "${PROBE_PKGS[@]}" glibc
-  probe ldcache bash -c "ldconfig -p | grep -E 'libvulkan\.|libgbm|libEGL|libGLX|libnvidia-allocator|libcuda\.'"
-  probe ldd bash -c "rc=0; for l in libEGL_nvidia.so.0 libGLX_nvidia.so.0 libnvidia-allocator.so.1 \
-      libnvidia-eglcore.so.$drv libnvidia-egl-gbm.so.1 libnvidia-egl-wayland.so.1 \
-      libnvidia-rmapi-tegra.so.$drv libcuda.so.1; do echo \"== \$l\"; ldd /usr/lib/raytone-l4t/\$l || rc=1; \
-      ldd /usr/lib/raytone-l4t/\$l | grep -q 'not found' && rc=1; done; exit \$rc"
+  probe ldcache bash -c "ldconfig -p | grep -E 'libvulkan\.|libgbm|libEGL|libGLX|libnvidia-allocator|libcuda\.|libnvidia-egl'"
+  probe ldd bash -c "rc=0; for l in /usr/lib/raytone-l4t/libEGL_nvidia.so.0 /usr/lib/raytone-l4t/libGLX_nvidia.so.0 \
+      /usr/lib/raytone-l4t/libnvidia-allocator.so.1 /usr/lib/raytone-l4t/libnvidia-eglcore.so.$drv \
+      $L4T_NV/libnvidia-egl-gbm.so.1 $L4T_NV/libnvidia-egl-wayland.so.1 \
+      /usr/lib/raytone-l4t/libnvidia-rmapi-tegra.so.$drv /usr/lib/raytone-l4t/libcuda.so.1; do \
+      echo \"== \$l\"; ldd \$l || rc=1; ldd \$l | grep -q 'not found' && rc=1; done; exit \$rc"
   probe drm_info drm_info
-  probe drm_info_json drm_info -j
   probe egl_surfaceless env __EGL_VENDOR_LIBRARY_FILENAMES=/etc/glvnd/egl_vendor.d/10_nvidia.json eglinfo -B -p surfaceless
   # eglinfo passes EGL_DEFAULT_DISPLAY for GBM, which NVIDIA's GBM platform rejects; gbmprobe uses a real device.
   probe egl_gbm_default_display eglinfo -B -p gbm
   probe vulkan vulkaninfo --summary
   grep -H . /sys/module/nvidia_drm/parameters/* /sys/module/nvidia_modeset/parameters/* > "$EVID/kms_params.txt" 2>&1 || true
 
-  # DRM nodes by what they are, since card/renderD numbers can change between boots.
-  local node nodes=() dev
-  rm -f "$EVID"/egl_device_*.txt "$EVID/egl_gbm.txt" && : > "$EVID/drm-nodes.txt"
-  for node in /sys/class/drm/*; do
-    [[ $(basename "$node") =~ ^(card|renderD)[0-9]+$ ]] || continue
-    dev=$(cat "$node/device/uevent" 2>/dev/null)
-    if [[ $dev == *OF_COMPATIBLE_0=nvidia,tegra264-display* || $dev == *PCI_ID=10DE:2B00* ]]; then
-      nodes+=("/dev/dri/$(basename "$node")")
-      echo "$(basename "$node"): $(grep -E '^(DRIVER|OF_COMPATIBLE_0|PCI_ID)=' "$node/device/uevent" | tr '\n' ' ')" >> "$EVID/drm-nodes.txt"
-    fi
+  rm -f "$EVID"/egl_device_*.txt "$EVID/egl_gbm.txt" "$EVID/drm_info_json.txt" && : > "$EVID/drm-nodes.txt"
+  for node in $(thor_drm_nodes); do
+    echo "$(basename "$node"): $(grep -E '^(DRIVER|OF_COMPATIBLE_0|PCI_ID)=' "/sys/class/drm/$(basename "$node")/device/uevent" | tr '\n' ' ')" \
+      >> "$EVID/drm-nodes.txt"
   done
   cp "$(dirname "$SCRIPT")/gbmprobe.c" "$ROOT/tmp/gbmprobe.c"
   probe gbmprobe_build bash -c 'cd /tmp && gcc -O1 -Wall -o gbmprobe gbmprobe.c $(pkg-config --cflags --libs gbm egl glesv2 libdrm)'
-  for node in "${nodes[@]}"; do
+  for node in $(thor_drm_nodes); do
     probe "gbmprobe_$(basename "$node")" /tmp/gbmprobe "$node"
     probe "devplat_$(basename "$node")" /tmp/gbmprobe --device-platform "$node"
   done
 
   {
-    echo "driver: $drv"
+    echo "driver: $drv  glue: $GLUE"
     echo "pass: ${PASS[*]:-none}"
     echo "fail: ${FAIL[*]:-none}"
     for f in "$EVID"/gbmprobe_*D*.txt "$EVID"/gbmprobe_card*.txt; do echo "$(basename "$f" .txt): $(grep '^RESULT' "$f" || echo 'no result')"; done
@@ -222,17 +268,32 @@ inside() {
   (( ${#FAIL[@]} == 0 ))
 }
 
-case ${1:-all} in
-  inside) inside ;;
-  all)
-    check_work
-    fetch_rootfs
-    host_facts
-    rc=0
-    sudo unshare --mount --pid --fork --propagation private -- \
-      env RAYTONE_NS=1 WORK="$WORK" PKG_MIRROR="${PKG_MIRROR:-}" bash "$SCRIPT" inside || rc=$?
-    sudo chown -R "$(id -u):$(id -g)" "$EVID"
-    exit $rc
-    ;;
-  *) echo "usage: $0 [all]" >&2; exit 2 ;;
-esac
+inside() {
+  require_namespace
+  setup_root
+  setup_packages "${PROBE_PKGS[@]}"
+  setup_l4t
+  add_gpu_nodes
+  probes_0a
+}
+
+enter_namespace() { # enter_namespace STAGE : rerun this file's STAGE as PID 1 of fresh mount/PID namespaces
+  sudo unshare --mount --pid --fork --propagation private -- \
+    env RAYTONE_NS=1 WORK="$WORK" EVID="$EVID" GLUE="$GLUE" PKG_MIRROR="${PKG_MIRROR:-}" bash "$1" "$2"
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  case ${1:-all} in
+    inside) inside ;;
+    all)
+      check_work
+      fetch_rootfs
+      host_facts
+      rc=0
+      enter_namespace "$SCRIPT" inside || rc=$?
+      sudo chown -R "$(id -u):$(id -g)" "$EVID"
+      exit $rc
+      ;;
+    *) echo "usage: $0 [all]" >&2; exit 2 ;;
+  esac
+fi
