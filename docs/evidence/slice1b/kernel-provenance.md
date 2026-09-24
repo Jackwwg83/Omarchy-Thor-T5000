@@ -43,8 +43,10 @@ Other facts for the no-initramfs entry:
     them is for Tegra264. The only copies on JetPack's disk are the 2020 builds; `tegra194` is from
     2020-09-11.
   - The running controller reports `Firmware timestamp: 2025-09-08 05:45:00 UTC, Version: 90.05 release`.
-    No file on disk or in the initrd has that build, so the boot firmware (which itself boots from USB)
-    loaded it, and the kernel read the running firmware's header.
+    No file on disk or in the initrd has that build. The inference is that the boot firmware loaded the
+    controller's firmware and the kernel read the header of the running copy. This is an inference, not
+    a proof: another vendor mechanism is not ruled out, and it does not show that NVIDIA's kernel takes
+    the controller over the same way on a cold boot through GRUB. The attended boot tests that.
   - `CONFIG_EXTRA_FIRMWARE=""` (nothing is built in), `CONFIG_DEVTMPFS_MOUNT=y` (needed without an initramfs).
 - The USB drive appeared as `sda` at 9.0 s. `rootwait=20` bounds only the wait for the root device, not
   driver probing before it.

@@ -158,13 +158,31 @@ agrees with every finding. One of its inferences was checked against new evidenc
 | `install` let grub-install write `EFI/BOOT/BOOTAA64.EFI` and renamed it afterwards: an interrupted install could leave a bootable, half-written ESP | grub-install writes into `raytone-staging/` below the ESP root, which the firmware never scans. `install` unpublishes a published drive first and refuses to finish if the firmware path exists. Tests cover a failed grub-install and an install over a published drive |
 | The initramfs fallback entry can stop at mkinitcpio's emergency shell (no panic, no systemd units yet) | Entry removed. The image stays on the drive, unused |
 | "The xHCI firmware is ready before `/init`, so it does not come from the initramfs" does not follow | Correct. Checked instead: JetPack's initrd carries only 2020 builds of `xusb.bin`, and the running controller reports a 2025-09-08 build that no file on disk has, so the boot firmware loads it. `CONFIG_EXTRA_FIRMWARE` is empty and `DEVTMPFS_MOUNT=y`. Booting without an initramfs is still the plan, as an attended experiment ([kernel-provenance.md](evidence/slice1b/kernel-provenance.md)) |
-| UEFI variable writes were ruled out only for the install chroot | `CONFIG_EFI_VARS_PSTORE` is not set in either kernel. The drive's fstab mounts efivarfs read-only (applied by systemd-remount-fs), so the running system cannot write variables |
+| UEFI variable writes were ruled out only for the install chroot | `CONFIG_EFI_VARS_PSTORE` is not set in either kernel. The drive's fstab mounts efivarfs read-only, applied by systemd-remount-fs. (Narrowed after the re-review, see below: before that remount, PID 1 and early units can still write) |
 | Without an initramfs, `rw` skips `systemd-fsck-root` | Arch entries boot `ro`. fstab remounts the root read-write after the check |
 | GPT auto-discovery on the first boots | `systemd.gpt_auto=0` on the Arch entries |
 | A normal reboot that stalls, and PID 1 hangs, are not covered | `reboot.target` is forced after 5 minutes. The watchdog and the dead-man fallback get tested once with someone present (below). Automatic recovery from every failure is not promised |
 | Thermal guard: a single check, run after an unbounded `nvpmodel -q`, and ordered after the services it watches | Separate script with behavioural tests. Checks every 30 s and decides before logging. Diagnostics have timeouts. Logs the fan tach. No ordering on the watched units. `Restart=on-failure` |
 | Vendor-kernel compatibility was overstated; both kernels report the same `uname -r` | The note is corrected. The boot marker records `uname -v`. A boot with the vendor kernel counts as its own experiment, not as a pass for NVIDIA's kernel |
 | Comparing FDTs "excluding /chosen" hides meaningful differences | Keep both raw FDTs. Normalise only known dynamic fields, and review `/chosen` separately |
+
+### Re-review of the fixes
+
+Codex re-reviewed `3740f65..71f8d5c` ([raw](reviews/2026-09-25-codex-boot1b-review2.md)). Its verdict was
+"不建议执行", with three minimal changes. Claude agrees with all three, and found a fourth problem itself.
+
+| Finding | Decision |
+| --- | --- |
+| efivarfs is writable until systemd-remount-fs runs. `systemd-hibernate-clear.service` (sysinit, not ordered after remount-fs) can delete `HibernateLocation` in that window | The guarantee is narrowed: nothing *left enabled* writes UEFI variables before the remount. Masked on the drive: `systemd-hibernate-clear`, `systemd-boot-random-seed`, `systemd-boot-clear-sysfail` and `systemd-boot-update`. JetPack has none of the variables these units test for (no `HibernateLocation`, `Loader*` or `Stub*` among its 56), so their conditions are false anyway. PID 1's own lock-down of `LoaderSystemToken` changes inode flags only, and that variable does not exist here. A read-only efivarfs from PID 1 onwards would need an initramfs or an init wrapper; not done for v1 |
+| (Claude) The Thor has an fTPM (`/dev/tpm0`). systemd 261's `tpm2-setup` creates a persistent SRK, and the `pcr*` units include NV-index PCRs: writes to TPM NV storage | Masked: `systemd-tpm2-setup{-early,}` and `systemd-pcr{machine,nvdone,phase,phase-sysinit,product}`. Their `ConditionSecurity=measured-os` should be false under GRUB, but that is not relied on |
+| (Claude) The unpacked rootfs has an empty `/etc/machine-id` and no `vconsole.conf`, so the first boot would be a systemd "first boot": `systemd-firstboot --prompt-keymap-auto` waits at the HDMI console, and preset-all runs | The installer runs `systemd-machine-id-setup`, writes `KEYMAP=us` and masks `systemd-firstboot`. `systemd-repart` and the sleep targets are masked too (plan: JetPack known issue 5525468). Every mask is verified |
+| Thermal guard: the service query and hwmon reads came before the temperature decision and had no hard limit, and a refused reboot ended the guard with exit 0 | Temperatures are judged first. Every command runs as `timeout -k 2 …`. A refused reboot becomes `--force`, then `--force --force`. The guard keeps checking after a request. Tests cover a query that ignores TERM, refused requests, and heating inside one process. The fan tach is logged only |
+| A failed install left the old `.staged` loader publishable | `install` removes `boot/grub/raytone-ready` first and writes it last, with the sha256 of the loader, `grub.cfg` and the modules. `publish` verifies that record and consumes it |
+| The prefix check was a substring match | The check now matches the NUL-terminated string exactly. It passes on the real staged loader. It is a regression alarm, not proof that the drive boots |
+| The firmware-source note stated an inference as fact | Reworded as an inference. The attended boot is the test |
+
+Accepted as the attended test's job (no change): a hang before PID 1 or of PID 1 itself is not recovered
+automatically, the hardware watchdog is unproven, and a forced reboot may leave the USB root needing fsck.
 
 Attended procedure (owner present, able to unplug the drive or cut power):
 1. Re-run `install-thor-root.sh` (brings pkgrel 2 and the changes above), then `install-thor-boot.sh install` (staged).
