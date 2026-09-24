@@ -105,9 +105,11 @@ for n in null zero urandom "$dev" "$ESP_DEV"; do
 done
 in_tools() { chroot "$tools" /usr/bin/env -i PATH=/usr/bin LANG=C.UTF-8 "$@"; }
 size_of() { stat -c %s "$1" 2>/dev/null || stat -f %z "$1"; }
-# The prefix is stored as its own NUL-terminated string in the core image.
+# The prefix is stored as its own NUL-terminated string in the core image. grep reads to the end
+# (no -q): stopping early would kill tr with SIGPIPE, which pipefail reports as a failure.
 check_prefix() {
-  LC_ALL=C tr '\0' '\n' < "$1" | grep -qxF "$PREFIX" || die "$(basename "$1") does not embed the prefix $PREFIX"
+  LC_ALL=C tr '\0' '\n' < "$1" | grep -xF "$PREFIX" > /dev/null ||
+    die "$(basename "$1") does not embed the prefix $PREFIX"
 }
 check_modules() {
   local m
@@ -154,6 +156,9 @@ case $cmd in
     check_prefix "$ESP_MNT/$LOADER.staged"
     in_tools grub-script-check "$BOOT/boot/grub/grub.cfg" || die "grub-script-check rejects boot/grub/grub.cfg"
     [[ $(size_of "$ESP_MNT/boot/grub/grubenv") == 1024 ]] || die "grubenv is not a 1024-byte environment block"
+    env_list=$(in_tools grub-editenv "$BOOT/boot/grub/grubenv" list) || die "grubenv does not read"
+    ! grep -a '^next_entry=.' <<< "$env_list" > /dev/null ||
+      die "grubenv already has a next_entry; the first boot after publish must be the default"
     check_modules
     mv -f "$ESP_MNT/$LOADER.staged" "$ESP_MNT/$LOADER"
     rm -f "$ESP_MNT/$READY"

@@ -48,6 +48,8 @@ STUB = textwrap.dedent("""\
           [[ -f $STATE/wrong-prefix ]] && prefix='(,gpt2)/boot/grub'
           [[ -f $STATE/longer-prefix ]] && prefix='(,gpt1)/boot/grub-other'
           printf 'core\\0%s\\0' "$prefix" > "$efidir/EFI/BOOT/BOOTAA64.EFI"
+          # a real core image goes on for megabytes after the prefix
+          [[ -f $STATE/big-image ]] && head -c 2097152 /dev/zero >> "$efidir/EFI/BOOT/BOOTAA64.EFI"
           [[ -f $STATE/grub-install-fails ]] && exit 1
           for m in normal part_gpt fat ext2 search_fs_uuid chain linux loadenv reboot sleep echo test; do
             touch "$ESP_REAL/boot/grub/arm64-efi/$m.mod"
@@ -56,8 +58,8 @@ STUB = textwrap.dedent("""\
           f=$2; f=${f/\\/mnt\\/raytone-esp/$ESP_REAL}
           case $3 in
             create) head -c 1024 /dev/zero > "$f" ;;
-            set) echo "$4" > "$f" ;;
-            list) cat "$f" ;;
+            set) { printf '%s\\n' "$4"; head -c 1024 /dev/zero; } | head -c 1024 > "$f.new" && mv "$f.new" "$f" ;;
+            list) tr -d '\\0' < "$f" ;;
           esac
         fi ;;
     esac
@@ -220,6 +222,18 @@ class InstallThorBootTests(unittest.TestCase):
         r = self.run_script("publish", "--write", "--confirm-serial", SERIAL)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertFalse((self.esp / "boot" / "grub" / "raytone-ready").exists())
+
+    def test_a_large_loader_passes_the_prefix_check(self):
+        (self.state / "big-image").touch()
+        self.install()
+        r = self.run_script("publish", "--write", "--confirm-serial", SERIAL)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_publish_refuses_an_armed_one_shot(self):
+        self.install()
+        r = self.run_script("arm-once", "--entry", "jetpack-grub", "--write", "--confirm-serial", SERIAL)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("next_entry", self.assert_publish_refused().stderr)
 
     def test_install_over_a_published_drive_unpublishes_it_first(self):
         self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write",
