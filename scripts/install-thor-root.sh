@@ -22,11 +22,12 @@
 # /var/lib/raytone/boots.log. NVIDIA's systemd watchdog setting (RuntimeWatchdogSec=120) comes with
 # raytone-thor-core. The drive gets a machine ID and a console keymap, so its first boot is not a
 # systemd "first boot" (no interactive systemd-firstboot, no preset-all). The running system mounts
-# efivarfs read-only once systemd-remount-fs has run; before that, nothing is left enabled that writes
-# UEFI variables or TPM NV storage: those systemd units (hibernate-clear, boot-random-seed,
-# boot-clear-sysfail, boot-update, tpm2-setup, pcr*) are masked, as are systemd-repart and the sleep
-# targets, and nothing that writes UEFI variables (efibootmgr, grub, fwupd) is installed. A dry run
-# unless --write.
+# efivarfs read-only once systemd-remount-fs has run. Every systemd unit on the drive that can write
+# UEFI variables or TPM state is masked, whatever would start it (boot, a socket, logind, a
+# generator): all systemd-pcr*, systemd-tpm2-*, factory-reset, bless-boot, hibernate and the
+# boot-update / boot-random-seed / boot-clear-sysfail units, found by name in the target. So are
+# systemd-repart and the sleep targets. Nothing that writes UEFI variables (efibootmgr, grub, fwupd)
+# is installed. A dry run unless --write.
 # Tests: tests/test_install_thor_root.py (RAYTONE_* variables exist for them).
 set -euo pipefail
 
@@ -73,15 +74,11 @@ HOSTNAME_=raytone-thor
 BASE_PKGS=(networkmanager openssh sudo avahi nss-mdns linux-firmware-realtek wireless-regdb iw vim less htop)
 UNITS=(sshd NetworkManager avahi-daemon systemd-timesyncd raytone-deadman.timer raytone-boot-start raytone-boot-marker
        raytone-thermal-guard nv-load-display-modules nvfancontrol nvpmodel nvpower)
-# Interactive first-boot setup, writers of UEFI variables and TPM NV storage, partition changes, sleep
-# (JetPack known issue 5525468).
-MASKED=(systemd-firstboot.service
-        systemd-hibernate-clear.service systemd-boot-random-seed.service systemd-boot-clear-sysfail.service
-        systemd-boot-update.service
-        systemd-tpm2-setup-early.service systemd-tpm2-setup.service systemd-pcrmachine.service systemd-pcrnvdone.service
-        systemd-pcrphase.service systemd-pcrphase-sysinit.service systemd-pcrproduct.service
-        systemd-repart.service
-        sleep.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target)
+# Masked by name wherever the target has them: units that can write UEFI variables or TPM state.
+MASK_RE='^(systemd-(pcr|tpm2-|factory-reset|bless-boot|hibernate|boot-(update|random-seed|clear-sysfail))|factory-reset)'
+# Masked always: interactive first-boot setup, partition changes, sleep (JetPack known issue 5525468).
+MASK_ALWAYS=(systemd-firstboot.service systemd-repart.service
+             sleep.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target)
 DROP_CAPS=-sys_module,-sys_rawio,-sys_boot,-sys_time,-bpf,-perfmon,-mac_admin,-mac_override,-syslog,-wake_alarm,-sys_admin,-sys_ptrace,-mknod,-kill
 KVER=6.8.12-1021-tegra
 
@@ -320,6 +317,11 @@ install -m 0600 "${NM_PROFILES[@]}" "$MNT/etc/NetworkManager/system-connections/
 # 6. Machine ID, services and SSH host keys.
 in_target systemd-machine-id-setup
 in_target systemctl enable "${UNITS[@]}"
+MASKED=("${MASK_ALWAYS[@]}")
+for f in "$MNT"/usr/lib/systemd/system/*; do
+  [[ -d $f ]] && continue
+  [[ ${f##*/} =~ $MASK_RE ]] && MASKED+=("${f##*/}")
+done
 in_target systemctl mask "${MASKED[@]}"
 in_target ssh-keygen -A
 
@@ -334,7 +336,10 @@ done
 for u in "${MASKED[@]}"; do
   [[ $(readlink "$MNT/etc/systemd/system/$u") == /dev/null ]] || die "unit not masked: $u"
 done
-[[ -s $MNT/etc/machine-id ]] || die "no machine ID on the drive"
+id=$(cat "$MNT/etc/machine-id" 2>/dev/null) || true
+[[ $id =~ ^[0-9a-f]{32}$ && $id != 00000000000000000000000000000000 ]] || die "no valid machine ID on the drive"
+[[ $id != "$(cat "$HOST_ETC/machine-id" 2>/dev/null)" ]] || die "the drive's machine ID is JetPack's"
+in_target timeout -k 1 5 true || die "timeout -k does not work on the drive; the thermal guard needs it"
 in_target visudo -cf /etc/sudoers.d/10-wheel > /dev/null || die "sudoers 10-wheel does not parse"
 in_target visudo -cf /etc/sudoers.d/raytone-temp > /dev/null || die "sudoers raytone-temp does not parse"
 in_target sshd -t || die "sshd configuration does not validate"

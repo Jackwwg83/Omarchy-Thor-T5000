@@ -40,7 +40,13 @@ STUB = textwrap.dedent("""\
           mkdir -p "$TARGET/etc/systemd/system"
           for u in "${@:3}"; do [[ -f $STATE/mask-fails-$u ]] || ln -sfn /dev/null "$TARGET/etc/systemd/system/$u"; done
         fi
-        if [[ $1 == systemd-machine-id-setup ]]; then echo 0123456789abcdef0123456789abcdef > "$TARGET/etc/machine-id"; fi
+        if [[ $1 == systemd-machine-id-setup ]]; then
+          id=0123456789abcdef0123456789abcdef
+          [[ -f $STATE/machine-id-like-host ]] && id=$(cat "$STATE/host-machine-id")
+          [[ -f $STATE/machine-id-uninitialized ]] && id=uninitialized
+          echo "$id" > "$TARGET/etc/machine-id"
+        fi
+        if [[ $1 == timeout && -f $STATE/no-timeout-k ]]; then exit 125; fi
         if [[ $1 == bsdtar ]]; then mkdir -p "$TARGET/etc" "$TARGET/home/alarm"; echo "Arch Linux ARM" > "$TARGET/etc/arch-release"; fi
         if [[ $1 == pacman && $2 == -U ]]; then
           k=$TARGET/usr/lib/modules/6.8.12-1021-tegra
@@ -49,6 +55,15 @@ STUB = textwrap.dedent("""\
                 "$TARGET/etc/nvpower/nvfancontrol/nvfancontrol_p3834_0008_p4071_0000.conf"
           ln -sf nvpmodel/nvpmodel_p3834_0008.conf "$TARGET/etc/nvpmodel.conf"
           ln -sf nvpower/nvfancontrol/nvfancontrol_p3834_0008_p4071_0000.conf "$TARGET/etc/nvfancontrol.conf"
+          # a few of systemd's units, as the upgraded rootfs has them
+          u=$TARGET/usr/lib/systemd/system
+          mkdir -p "$u/factory-reset.target.wants"
+          for n in systemd-tpm2-setup.service systemd-tpm2-clear.service systemd-pcrlogin@.service systemd-pcrextend.socket \
+                   systemd-pcrlock-make-policy.service systemd-factory-reset.socket systemd-factory-reset-request.service \
+                   factory-reset.target systemd-hibernate-clear.service systemd-boot-random-seed.service \
+                   systemd-bless-boot.service sshd.service systemd-journald.service; do
+            touch "$u/$n"
+          done
         fi ;;
       nmcli) echo "802-11-wireless:/run/NetworkManager/system-connections/netplan-NM-1234-Home.nmconnection"
              echo "loopback:/run/NetworkManager/system-connections/lo.nmconnection"
@@ -93,6 +108,8 @@ class InstallThorRootTests(unittest.TestCase):
             (self.run / n).write_text("[connection]\n")
         os.symlink("/usr/share/zoneinfo/Asia/Shanghai", self.etc / "localtime")
         (self.home / ".ssh" / "authorized_keys").write_text("ssh-ed25519 AAAA test\n")
+        (self.etc / "machine-id").write_text("fedcba9876543210fedcba9876543210\n")
+        (self.state / "host-machine-id").write_text("fedcba9876543210fedcba9876543210\n")
         self.rules = t / "rules"
 
     def tearDown(self):
@@ -283,15 +300,34 @@ class InstallThorRootTests(unittest.TestCase):
     def test_uefi_variable_and_tpm_writers_are_masked(self):
         self.write()
         u = self.target / "etc/systemd/system"
-        for unit in ("systemd-hibernate-clear.service", "systemd-boot-random-seed.service",
-                     "systemd-boot-clear-sysfail.service", "systemd-boot-update.service",
-                     "systemd-tpm2-setup-early.service", "systemd-tpm2-setup.service", "systemd-pcrnvdone.service",
-                     "systemd-pcrmachine.service", "systemd-pcrphase.service", "systemd-pcrphase-sysinit.service",
-                     "systemd-pcrproduct.service", "systemd-repart.service",
-                     "sleep.target", "suspend.target", "hibernate.target", "hybrid-sleep.target",
-                     "suspend-then-hibernate.target"):
+        # found in the target by name, whether started at boot, by a socket, by logind or by a generator
+        for unit in ("systemd-tpm2-setup.service", "systemd-tpm2-clear.service", "systemd-pcrlogin@.service",
+                     "systemd-pcrextend.socket", "systemd-pcrlock-make-policy.service", "systemd-factory-reset.socket",
+                     "systemd-factory-reset-request.service", "factory-reset.target",
+                     "systemd-hibernate-clear.service", "systemd-boot-random-seed.service", "systemd-bless-boot.service",
+                     # always, present or not
+                     "systemd-repart.service", "sleep.target", "suspend.target", "hibernate.target",
+                     "hybrid-sleep.target", "suspend-then-hibernate.target"):
             with self.subTest(unit=unit):
                 self.assertEqual(os.readlink(u / unit), "/dev/null")
+        for unit in ("sshd.service", "systemd-journald.service", "factory-reset.target.wants"):
+            with self.subTest(unit=unit):
+                self.assertFalse((u / unit).is_symlink())
+
+    def test_the_machine_id_must_be_new_and_valid(self):
+        for flag in ("machine-id-like-host", "machine-id-uninitialized"):
+            with self.subTest(flag=flag):
+                (self.state / flag).touch()
+                r = self.run_script("--write", "--confirm-serial", SERIAL)
+                self.assertNotEqual(r.returncode, 0)
+                self.assertIn("machine ID", r.stderr)
+                (self.state / flag).unlink()
+
+    def test_the_drive_needs_timeout_with_kill_after(self):
+        (self.state / "no-timeout-k").touch()
+        r = self.run_script("--write", "--confirm-serial", SERIAL)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("timeout", r.stderr)
 
     def test_a_unit_that_did_not_mask_fails_the_install(self):
         (self.state / "mask-fails-systemd-tpm2-setup.service").touch()
