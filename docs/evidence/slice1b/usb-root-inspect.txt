@@ -1,0 +1,90 @@
+## /boot
+total 67784
+drwxr-xr-x  2 root root     4096 Sep 24 23:59 .
+dr-xr-xr-x 17 root root     4096 Sep 24 23:56 ..
+-rw-------  1 root root 15927900 Sep 24 23:59 initramfs-raytone-thor-linux.img
+-rw-r--r--  1 root root 53467648 Sep 24 23:59 vmlinuz-raytone-thor-linux
+## fstab
+# RaytoneOS Thor USB drive
+PARTUUID=ca5a56c6-4a4b-4e02-8183-ff166514ae3b / ext4 defaults,noatime 0 1
+## hostname
+raytone-thor
+## mkinitcpio drop-in
+# RaytoneOS Thor: USB storage, xHCI and ext4 are built into the L4T kernel; the initramfs is a
+# fallback (the GRUB entry boots without one). No autodetect (built in a chroot), no early KMS.
+MODULES=(uas)
+HOOKS=(base udev modconf block filesystems fsck)
+## pacman IgnorePkg
+24:# Pacman won't upgrade packages listed in IgnorePkg and members of IgnoreGroup
+25:#IgnorePkg   =
+## modules dir
+6.8.12-1021-tegra
+## depmod override
+override nvidia-drm * updates/opensource-gpu-disp
+override nvidia-modeset * updates/opensource-gpu-disp
+override nvidia-uvm * updates/opensource-gpu-disp
+override nvidia * updates/opensource-gpu-disp
+## board links
+lrwxrwxrwx 1 root root 65 Sep 24 23:59 /tmp/tmp.5x2HVdOc6W/etc/nvfancontrol.conf -> /etc/nvpower/nvfancontrol/nvfancontrol_p3834_0008_p4071_0000.conf
+lrwxrwxrwx 1 root root 38 Sep 24 23:59 /tmp/tmp.5x2HVdOc6W/etc/nvpmodel.conf -> /etc/nvpmodel/nvpmodel_p3834_0008.conf
+## ld.so
+/usr/lib/raytone-l4t
+libjetsonpower.so
+libnvcolorutil.so
+libnvdc.so
+libnvddk_2d_v2.so
+libnvddk_vic.so
+libnvdla_runtime.so
+libnvfnet.so
+libnvfnetstoredefog.so
+libnvfnetstorehdfx.so
+libnvidia-ml.so.1
+libnvidia-rmapi-tegra.so.595.78
+libnvidia-tls.so.595.78
+libnvimp.so
+libnvisp_utils.so
+libnvos.so
+libnvplayfair.so
+libnvpva_algorithms.so
+libnvpva.so
+libnvrm_chip.so
+libnvrm_gpu.so
+libnvrm_host1x.so
+libnvrm_mem.so
+libnvrm_stream.so
+libnvrm_surface.so
+libnvrm_sync.so
+libnvscibuf.so
+libnvscibuf.so.1
+libnvscicommon.so
+libnvscicommon.so.1
+libnvscievent.so
+libnvsciipc.so
+libnvscistream.so
+libnvscistream.so.1
+libnvscisync.so
+libnvscisync.so.1
+libnvsocsys.so
+libnvtegrahv.so
+libnvvic.so
+## NM profiles
+total 12
+drwx------ 2 root root 4096 Sep 24 23:59 .
+drwxr-xr-x 7 root root 4096 Sep 24 23:59 ..
+-rw------- 1 root root  347 Sep 24 23:59 <profile>.nmconnection
+## users
+root:x:0:0::/root:/usr/bin/bash
+nvidia:x:1000:1000::/home/nvidia:/bin/bash
+## groups of nvidia
+wheel:x:998:nvidia
+audio:x:995:nvidia
+input:x:992:nvidia
+render:x:987:nvidia
+video:x:983:nvidia
+## sudoers.d
+total 16
+drwxr-x---  2 root root 4096 Sep 24 23:59 .
+drwxr-xr-x 55 root root 4096 Sep 24 23:59 ..
+-r--r-----  1 root root   25 Sep 24 23:59 10-wheel
+-r--r-----  1 root root   76 Sep 24 23:59 raytone-temp
+## initramfs

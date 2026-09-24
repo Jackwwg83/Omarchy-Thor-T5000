@@ -1,0 +1,5 @@
+total 67784
+drwxr-xr-x  2 root root     4096 Sep 24 23:59 .
+dr-xr-xr-x 17 root root     4096 Sep 24 23:56 ..
+-rw-------  1 root root 15927900 Sep 24 23:59 initramfs-raytone-thor-linux.img
+-rw-r--r--  1 root root 53467648 Sep 24 23:59 vmlinuz-raytone-thor-linux
