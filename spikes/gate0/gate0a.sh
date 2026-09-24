@@ -1,0 +1,207 @@
+#!/bin/bash
+# Gate 0a spike: probe Arch Linux ARM userspace against the host's L4T graphics
+# libraries on a running JetPack system, without stopping the display manager.
+#
+# Spike code (see README.md): it answers one question and is then discarded in
+# favour of tested build tooling. Run as the normal user on the Thor. The only
+# privileged part runs in fresh mount and PID namespaces, so its mounts and any
+# leftover processes disappear when it exits.
+set -euo pipefail
+shopt -s nullglob
+
+SCRIPT=$(readlink -f "$0")
+WORK=${WORK:-$HOME/raytone}
+ROOT=$WORK/probe-root
+EVID=$WORK/evidence/gate0a
+CACHE=$WORK/cache
+TARBALL=ArchLinuxARM-aarch64-latest.tar.gz
+MIRROR=${MIRROR:-http://os.archlinuxarm.org/os}
+ALARM_KEY=68B3537F39A313B3E574D06777193F152BDBE6A6
+L4T_DIRS=(/usr/lib/aarch64-linux-gnu/nvidia /usr/lib/aarch64-linux-gnu/tegra-egl /opt/nvidia/l4t-gpu-libs)
+# Only NVIDIA-named libraries enter the loader path; L4T's own libvulkan,
+# libv4l and Ada runtime copies must not shadow Arch's.
+ALLOW_RE='^(libnv|libcuda|libGLX_nvidia|libEGL_nvidia|libGLES(v1_CM|v2)_nvidia|libtegra|libjetsonpower|libgstnv|libv4l2_nv|libVkLayer_json_gen|libVkSCLayer|libvulkansc)'
+GPU_NODES=(/dev/nvidia0 /dev/nvidia1 /dev/nvidiactl /dev/nvidia-modeset /dev/nvidia-uvm /dev/nvidia-uvm-tools
+           /dev/host1x-fence /dev/nvmap)
+PROBE_PKGS=(mesa libglvnd vulkan-icd-loader drm_info mesa-utils vulkan-tools)
+# Capabilities the package manager never needs; dropping them also keeps it
+# from loading modules, remounting efivarfs or touching raw devices.
+DROP_CAPS=-sys_module,-sys_rawio,-sys_admin,-sys_ptrace,-sys_boot,-sys_time,-mknod,-sys_pacct,-syslog,-mac_admin,-mac_override,-wake_alarm,-block_suspend,-bpf,-perfmon,-linux_immutable,-sys_tty_config,-lease
+
+check_work() {
+  [[ $WORK == /home/*/* && $(readlink -f "$WORK") == "$WORK" ]] ||
+    { echo "WORK must be an absolute path under /home without symlinks: $WORK" >&2; exit 1; }
+  local p
+  for p in "$ROOT" "$EVID" "$CACHE"; do
+    [[ ! -L $p ]] || { echo "refusing symlinked path $p" >&2; exit 1; }
+  done
+}
+
+fetch_rootfs() (
+  mkdir -p "$CACHE" "$EVID"
+  cd "$CACHE"
+  [[ -f $TARBALL ]] || curl -fL --retry 3 -o "$TARBALL" "$MIRROR/$TARBALL"
+  curl -fsL -o "$TARBALL.md5" "$MIRROR/$TARBALL.md5"
+  curl -fsL -o "$TARBALL.sig" "$MIRROR/$TARBALL.sig"
+  md5sum -c "$TARBALL.md5"
+  gnupg=$(mktemp -d)
+  GNUPGHOME=$gnupg gpg -q --keyserver hkps://keyserver.ubuntu.com --recv-keys "$ALARM_KEY"
+  GNUPGHOME=$gnupg gpg -q --verify "$TARBALL.sig" "$TARBALL"
+  GNUPGHOME=$gnupg gpgconf --kill all
+  rm -rf "$gnupg"
+  { echo "tarball: $TARBALL"; echo "sha256: $(sha256sum "$TARBALL" | cut -d' ' -f1)"
+    echo "signature: good, key $ALARM_KEY"; } > "$EVID/rootfs.txt"
+)
+
+# Read-only facts from the JetPack host for the package ledger (kept out of git).
+host_facts() {
+  local out=$CACHE/l4t-host p m
+  mkdir -p "$out/maintscripts" "$out/etc"
+  dpkg-query -W -f='${Package}\t${Version}\n' 'nvidia-l4t-*' > "$out/packages.tsv"
+  local pkgs=()
+  mapfile -t pkgs < <(cut -f1 "$out/packages.tsv")
+  for p in "${pkgs[@]}"; do dpkg -L "$p" | sed "s|^|$p\t|"; done > "$out/files.tsv"
+  apt-cache policy "${pkgs[@]}" > "$out/apt-policy.txt" 2>&1
+  for m in nvidia nvidia_drm nvidia_modeset nvidia_uvm tegra_dce host1x nvethernet r8125 rtw89_8852be ext4; do
+    printf '%s\t%s\t%s\n' "$m" "$(modinfo -n "$m" 2>/dev/null)" "$(modinfo -F vermagic "$m" 2>/dev/null)"
+  done > "$out/modules.tsv"
+  for p in /var/lib/dpkg/info/nvidia-l4t-*.{preinst,postinst,prerm,postrm,triggers,conffiles}; do cp "$p" "$out/maintscripts/"; done
+  for p in /etc/modprobe.d /etc/depmod.d; do [[ -d $p ]] && cp -rL "$p" "$out/etc/"; done
+  [[ -f /etc/systemd/nv-load-gpu-libs.sh ]] && cp -L /etc/systemd/nv-load-gpu-libs.sh "$out/"
+  systemctl cat nv-load-display-modules.service nvfancontrol.service nvpmodel.service nvpower.service \
+    nvcpupowerfix.service nv_hugetlbfs_init.service nv-graphics.service > "$out/units.txt" 2>&1 || true
+  uname -r > "$out/kernel.txt"
+}
+
+in_root() { # run as root inside the probe root with dangerous capabilities dropped
+  setpriv --bounding-set "$DROP_CAPS" -- chroot "$ROOT" /usr/bin/env -i PATH=/usr/bin HOME=/root LANG=C.UTF-8 "$@"
+}
+
+PASS=() FAIL=()
+probe() { # probe NAME CMD... : run as the unprivileged user, output to $EVID/NAME.txt
+  local name=$1; shift
+  local rc=0
+  timeout 90 chroot --userspec=1000:1000 --groups=44,993 "$ROOT" \
+    /usr/bin/env -i PATH=/usr/bin HOME=/tmp LANG=C.UTF-8 "$@" > "$EVID/$name.txt" 2>&1 || rc=$?
+  echo "exit: $rc" >> "$EVID/$name.txt"
+  if (( rc == 0 )); then PASS+=("$name"); else FAIL+=("$name (exit $rc)"); fi
+}
+
+bind_ro() { mkdir -p "$2"; mount --bind "$1" "$2"; mount -o remount,bind,ro "$2"; }
+bind_node() { touch "$2"; mount --bind "$1" "$2"; }
+
+inside() {
+  [[ ${RAYTONE_NS:-} == 1 && $$ -eq 1 && $EUID -eq 0 ]] ||
+    { echo "inside: only reachable through the namespace wrapper" >&2; exit 1; }
+  check_work
+
+  if [[ ! -f $ROOT/etc/arch-release ]]; then
+    rm -rf "$ROOT.partial" && mkdir -p "$ROOT.partial"
+    tar --xattrs --xattrs-include='*' --acls --numeric-owner -xpf "$CACHE/$TARBALL" -C "$ROOT.partial"
+    rm -rf "$ROOT" && mv "$ROOT.partial" "$ROOT"
+  fi
+
+  # Private /dev with only the basic nodes; GPU nodes are added for the probes.
+  mount -t proc proc "$ROOT/proc"
+  mount -t sysfs -o ro,nosuid,nodev,noexec sysfs "$ROOT/sys"
+  mount -t tmpfs -o mode=0755,nosuid tmpfs "$ROOT/dev"
+  local n
+  for n in null zero full random urandom tty; do bind_node "/dev/$n" "$ROOT/dev/$n"; done
+  mkdir -p "$ROOT/dev/pts" "$ROOT/dev/shm"
+  mount -t devpts -o newinstance,ptmxmode=0666 devpts "$ROOT/dev/pts"
+  ln -s pts/ptmx "$ROOT/dev/ptmx"
+  mount -t tmpfs -o mode=1777 tmpfs "$ROOT/dev/shm"
+  ln -s /proc/self/fd "$ROOT/dev/fd"
+  mount -t tmpfs -o mode=0755 tmpfs "$ROOT/run"
+  mount -t tmpfs -o mode=1777 tmpfs "$ROOT/tmp"
+  rm -f "$ROOT/etc/resolv.conf" && cat /etc/resolv.conf > "$ROOT/etc/resolv.conf"
+
+  if [[ ! -f $ROOT/.raytone-probe-ready ]]; then
+    in_root pacman-key --init
+    in_root pacman-key --populate archlinuxarm
+    if ! in_root pacman -Sy --noconfirm archlinuxarm-keyring 2>&1 | tee "$EVID/pacman-keyring.txt"; then
+      grep -qi -E 'sandbox|landlock' "$EVID/pacman-keyring.txt" || exit 1
+      echo DisableSandbox >> "$ROOT/etc/pacman.conf"   # only when the download sandbox is the failure
+      in_root pacman -Sy --noconfirm archlinuxarm-keyring
+    fi
+    if in_root pacman -Q linux-aarch64 >/dev/null 2>&1; then in_root pacman -Rdd --noconfirm linux-aarch64; fi
+    in_root pacman -Su --noconfirm
+    in_root pacman -S --noconfirm --needed "${PROBE_PKGS[@]}"
+    in_root gpgconf --homedir /etc/pacman.d/gnupg --kill all || true
+    touch "$ROOT/.raytone-probe-ready"
+  fi
+
+  # Host L4T libraries, read-only at their own paths, plus an allowlisted loader directory.
+  local d f base farm=$ROOT/usr/lib/raytone-l4t
+  for d in "${L4T_DIRS[@]}"; do bind_ro "$d" "$ROOT$d"; done
+  rm -rf "$farm" && mkdir -p "$farm"
+  : > "$EVID/l4t-excluded.txt"
+  for f in /usr/lib/aarch64-linux-gnu/nvidia/*.so* /usr/lib/aarch64-linux-gnu/tegra-egl/*.so* \
+           /opt/nvidia/l4t-gpu-libs/openrm/*.so*; do
+    base=$(basename "$f")
+    if [[ ! $base =~ $ALLOW_RE ]]; then echo "$f" >> "$EVID/l4t-excluded.txt"; continue; fi
+    [[ ! -e $farm/$base ]] || { echo "duplicate library name $base" >&2; exit 1; }
+    ln -s "$f" "$farm/$base"
+  done
+  echo /usr/lib/raytone-l4t > "$ROOT/etc/ld.so.conf.d/raytone-l4t.conf"
+
+  # Registrations taken from the host's own files.
+  mkdir -p "$ROOT/etc/glvnd/egl_vendor.d" "$ROOT/usr/share/egl/egl_external_platform.d" \
+           "$ROOT/usr/lib/gbm" "$ROOT/etc/vulkan/icd.d"
+  cp /usr/share/glvnd/egl_vendor.d/10_nvidia.json "$ROOT/etc/glvnd/egl_vendor.d/10_nvidia.json"
+  cp /usr/share/egl/egl_external_platform.d/nvidia_gbm.json "$ROOT/usr/share/egl/egl_external_platform.d/15_nvidia_gbm.json"
+  cp /usr/share/egl/egl_external_platform.d/nvidia_wayland.json "$ROOT/usr/share/egl/egl_external_platform.d/10_nvidia_wayland.json"
+  cp -L /usr/lib/aarch64-linux-gnu/nvidia/nvidia_icd.json "$ROOT/etc/vulkan/icd.d/nvidia_icd.json"
+  ln -sfn "$(readlink -f /usr/lib/aarch64-linux-gnu/gbm/nvidia-drm_gbm.so)" "$ROOT/usr/lib/gbm/nvidia-drm_gbm.so"
+  ln -sfn "$(readlink -f /usr/lib/aarch64-linux-gnu/gbm/tegra_gbm.so)" "$ROOT/usr/lib/gbm/tegra_gbm.so"
+  in_root ldconfig
+
+  # GPU and display nodes for the probes only; udev database read-only, no control socket.
+  for n in "${GPU_NODES[@]}"; do [[ -e $n ]] && bind_node "$n" "$ROOT$n"; done
+  bind_ro /dev/dri "$ROOT/dev/dri"
+  [[ -d /dev/nvidia-caps ]] && bind_ro /dev/nvidia-caps "$ROOT/dev/nvidia-caps"
+  [[ -d /run/udev/data ]] && bind_ro /run/udev/data "$ROOT/run/udev/data"
+
+  local drv
+  drv=$(modinfo -F version nvidia)
+  probe versions pacman -Q "${PROBE_PKGS[@]}" glibc
+  probe ldcache bash -c "ldconfig -p | grep -E 'libvulkan\.|libgbm|libEGL|libGLX|libnvidia-allocator|libcuda\.'"
+  probe ldd bash -c "rc=0; for l in libEGL_nvidia.so.0 libGLX_nvidia.so.0 libnvidia-allocator.so.1 \
+      libnvidia-eglcore.so.$drv libnvidia-egl-gbm.so.1 libnvidia-egl-wayland.so.1 \
+      libnvidia-rmapi-tegra.so.$drv libcuda.so.1; do echo \"== \$l\"; ldd /usr/lib/raytone-l4t/\$l || rc=1; \
+      ldd /usr/lib/raytone-l4t/\$l | grep -q 'not found' && rc=1; done; exit \$rc"
+  probe drm_info drm_info
+  probe drm_info_json drm_info -j
+  probe egl_device_nvidia env __EGL_VENDOR_LIBRARY_FILENAMES=/etc/glvnd/egl_vendor.d/10_nvidia.json eglinfo -B -p device
+  probe egl_device_default eglinfo -B -p device
+  probe egl_surfaceless env __EGL_VENDOR_LIBRARY_FILENAMES=/etc/glvnd/egl_vendor.d/10_nvidia.json eglinfo -B -p surfaceless
+  probe egl_gbm eglinfo -B -p gbm
+  probe vulkan vulkaninfo --summary
+  probe kms_params bash -c 'grep -H . /sys/module/nvidia_drm/parameters/* /sys/module/nvidia_modeset/parameters/*'
+
+  {
+    echo "driver: $drv"
+    echo "pass: ${PASS[*]:-none}"
+    echo "fail: ${FAIL[*]:-none}"
+    echo "nvidia in EGL device probe: $(grep -c -i nvidia "$EVID/egl_device_nvidia.txt" || true) lines"
+    echo "nvidia in Vulkan probe: $(grep -c -i 'NVIDIA Thor' "$EVID/vulkan.txt" || true) lines"
+    echo "not proven here: page flips, compositor behaviour, seat permissions, boot, module selection"
+  } > "$EVID/summary.txt"
+  cat "$EVID/summary.txt"
+  (( ${#FAIL[@]} == 0 ))
+}
+
+case ${1:-all} in
+  inside) inside ;;
+  all)
+    check_work
+    fetch_rootfs
+    host_facts
+    rc=0
+    sudo unshare --mount --pid --fork --propagation private -- \
+      env RAYTONE_NS=1 WORK="$WORK" bash "$SCRIPT" inside || rc=$?
+    sudo chown -R "$(id -u):$(id -g)" "$EVID"
+    exit $rc
+    ;;
+  *) echo "usage: $0 [all]" >&2; exit 2 ;;
+esac

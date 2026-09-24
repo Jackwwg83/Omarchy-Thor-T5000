@@ -33,3 +33,19 @@ independent Claude plan reviewer (15 findings). The approved result is [PLAN.md]
 | --- | --- | --- | --- |
 | Keep the boot loader's `bl_prof_*` arguments in the GRUB command line? | Drop them and verify | Copy `/proc/cmdline` verbatim | Slice 1a boots JetPack through GRUB without them and compares `/proc/cmdline` and `dmesg` |
 | Which egl-wayland first? | L4T's 1.1.11, then compare | Arch's newer build (explicit sync) | Gate 0b tests both |
+
+## 2026-09-24 — Gate 0a probe script (first sudo on the Thor)
+
+Codex reviewed the first draft of `spikes/gate0/gate0a.sh` and judged it not safe to run as written.
+All eight findings were applied before the first run:
+
+| Finding | Change |
+| --- | --- |
+| The chroot got the host's whole writable `/dev` and `/run/udev` | Private tmpfs `/dev` with basic nodes only; GPU/display nodes added for the probe step; only `/run/udev/data`, read-only |
+| Fresh `/proc` still showed host PIDs; root kept every capability | Mount + PID namespaces; package steps run with `sys_module`, `sys_admin`, `sys_rawio`, `mknod` and similar dropped from the bounding set; probes run as uid 1000 |
+| `inside` could be called directly, and leftover agents could keep the namespace alive | `inside` refuses unless it is PID 1 of the new namespace; namespace teardown kills leftovers |
+| `cp -L` onto the rootfs `resolv.conf` could follow a symlink onto the host (real bug) | Remove the link inside the root, then write a plain file; `WORK` must be a symlink-free path under `/home` |
+| `cd` in the download step broke a relative `$0` (real bug); partial unpacks were reused | Absolute script path saved first; download in a subshell; unpack to `.partial` then rename; xattrs and ACLs kept |
+| pacman 7 sandbox and stale keyrings not handled | Refresh `archlinuxarm-keyring` first; `DisableSandbox` only if the sandbox is the failure |
+| Deny-list for L4T libraries, fixed driver version, Mesa fallback could pass as NVIDIA | NVIDIA-name allowlist with excluded files logged; duplicate names abort; driver version read from `modinfo`; NVIDIA-only and default EGL runs recorded separately |
+| Probe failures did not change the exit status | Per-probe exit codes, 90 s timeouts, summary with pass/fail, non-zero exit on any failure |
