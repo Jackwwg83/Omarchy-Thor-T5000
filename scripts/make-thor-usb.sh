@@ -11,16 +11,15 @@
 # internal disk. Tests: tests/test_make_thor_usb.py (RAYTONE_* variables exist for them).
 set -euo pipefail
 
-SYS=${RAYTONE_SYS:-/sys}
 RULES=${RAYTONE_UDEV_RULES:-/run/udev/rules.d}
-MIN_SIZE=$((8 * 1024 ** 3))
-MAX_SIZE=$((2 * 1024 ** 4))
 ESP_LABEL=RAYTONE_ESP
 ROOT_LABEL=RAYTONE_ROOT
 
 die() { echo "make-thor-usb: $*" >&2; exit 1; }
+# shellcheck source=lib/usb.sh
+source "$(dirname "$(readlink -f "$0")")/lib/usb.sh"
 
-disk='' serial='' write=0 confirm=''
+disk='' serial='' write=0 confirm='' dev=''
 while (($#)); do
   case $1 in
     --disk) disk=${2:-}; shift 2 ;;
@@ -30,38 +29,7 @@ while (($#)); do
     *) die "unknown argument $1" ;;
   esac
 done
-[[ -n $disk && -n $serial ]] ||
-  die "usage: --disk /dev/disk/by-id/usb-... --serial SERIAL [--write --confirm-serial SERIAL]"
-[[ $(basename "$disk") == usb-* && $(basename "$(dirname "$disk")") == by-id ]] ||
-  die "--disk must be a /dev/disk/by-id/usb-* link, got $disk"
-dev=$(readlink -f "$disk")
-name=$(basename "$dev")
-[[ $name =~ ^sd[a-z]+$ ]] || die "$disk resolves to $dev, not a whole USB disk node"
-
-identity() { # abort unless $dev is still the expected whole USB disk
-  local type tran ser size
-  read -r type tran ser size < <(lsblk -dn -b -o TYPE,TRAN,SERIAL,SIZE "$dev")
-  [[ $type == disk ]] || die "$dev is '$type', not a whole disk"
-  [[ $tran == usb ]] || die "$dev is on '$tran', not a USB disk"
-  [[ $ser == "$serial" ]] || die "$dev serial is '$ser', expected '$serial'"
-  ((size >= MIN_SIZE && size <= MAX_SIZE)) || die "$dev size $size bytes is outside 8 GiB to 2 TiB"
-}
-
-not_in_use() {
-  local rootsrc rootdisk h
-  rootsrc=$(findmnt -n -o SOURCE /)
-  rootdisk=$(lsblk -no PKNAME "$rootsrc" 2>/dev/null | head -1)
-  [[ $rootdisk != "$name" && $rootsrc != "$dev" ]] || die "$dev holds /"
-  [[ -z $(lsblk -n -o MOUNTPOINTS "$dev" | tr -d '[:space:]') ]] || die "$dev has mounted partitions"
-  local sw
-  for sw in $(swapon --show=NAME --noheadings); do
-    [[ $(basename "$sw") =~ ^${name}[0-9]*$ ]] && die "$dev has active swap ($sw)"
-  done
-  for h in "$SYS/block/$name/holders"/* "$SYS/block/$name/$name"*/holders/*; do
-    [[ -e $h ]] && die "$dev has holders ($(basename "$h"))"
-  done
-  return 0
-}
+resolve_usb_disk
 
 run() { # run CMD... : destructive step, directly after a fresh identity check
   identity
