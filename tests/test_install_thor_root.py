@@ -45,7 +45,9 @@ STUB = textwrap.dedent("""\
           ln -sf nvpmodel/nvpmodel_p3834_0008.conf "$TARGET/etc/nvpmodel.conf"
           ln -sf nvpower/nvfancontrol/nvfancontrol_p3834_0008_p4071_0000.conf "$TARGET/etc/nvfancontrol.conf"
         fi ;;
-      nmcli) echo "Home:/etc/NetworkManager/system-connections/Home.nmconnection"; echo "lo:/run/NetworkManager/system-connections/lo.nmconnection" ;;
+      nmcli) echo "802-11-wireless:/run/NetworkManager/system-connections/netplan-NM-1234-Home.nmconnection"
+             echo "loopback:/run/NetworkManager/system-connections/lo.nmconnection"
+             echo "bridge:/run/NetworkManager/system-connections/l4tbr0.nmconnection" ;;
     esac
     exit 0
     """)
@@ -80,6 +82,10 @@ class InstallThorRootTests(unittest.TestCase):
         (self.etc / "shadow").write_text(f"root:*:1::::::\nnvidia:{HASH}:20000:0:99999:7:::\n")
         (self.etc / "NetworkManager" / "system-connections" / "Home.nmconnection").write_text("[wifi]\nssid=Home\n")
         (self.etc / "NetworkManager" / "system-connections" / "Cafe.nmconnection").write_text("[wifi]\nssid=Cafe\n")
+        self.run = t / "hostrun" / "NetworkManager" / "system-connections"
+        self.run.mkdir(parents=True)
+        for n in ("netplan-NM-1234-Home.nmconnection", "lo.nmconnection", "l4tbr0.nmconnection"):
+            (self.run / n).write_text("[connection]\n")
         os.symlink("/usr/share/zoneinfo/Asia/Shanghai", self.etc / "localtime")
         (self.home / ".ssh" / "authorized_keys").write_text("ssh-ed25519 AAAA test\n")
         self.rules = t / "rules"
@@ -91,7 +97,8 @@ class InstallThorRootTests(unittest.TestCase):
         env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}", STATE=str(self.state), TARGET=str(self.target),
                    RAYTONE_SYS=str(self.sys), RAYTONE_SKIP_ROOT_CHECK="1", RAYTONE_NO_UNSHARE="1",
                    RAYTONE_TARGET_MOUNT=str(self.target), RAYTONE_HOST_ETC=str(self.etc),
-                   RAYTONE_HOST_HOME=str(self.home), RAYTONE_UDEV_RULES=str(self.rules))
+                   RAYTONE_HOST_HOME=str(self.home), RAYTONE_UDEV_RULES=str(self.rules),
+                   RAYTONE_HOST_RUN=str(self.run.parent.parent))
         return subprocess.run(["bash", str(SCRIPT), "--disk", str(self.link), "--serial", SERIAL,
                                "--tools-root", str(self.tools), "--tarball", str(self.tarball),
                                "--tarball-sha256", sha or self.sha, "--packages", str(self.pkgs),
@@ -171,7 +178,7 @@ class InstallThorRootTests(unittest.TestCase):
 
     def test_network_and_ssh_come_from_the_jetpack_host(self):
         self.write()
-        nm = self.target / "etc/NetworkManager/system-connections/Home.nmconnection"
+        nm = self.target / "etc/NetworkManager/system-connections/netplan-NM-1234-Home.nmconnection"
         self.assertEqual(nm.stat().st_mode & 0o777, 0o600)
         keys = self.target / "home/nvidia/.ssh/authorized_keys"
         self.assertEqual(keys.read_text(), "ssh-ed25519 AAAA test\n")
@@ -219,7 +226,7 @@ class InstallThorRootTests(unittest.TestCase):
     def test_only_the_active_network_profile_is_copied(self):
         self.write()
         nm = self.target / "etc/NetworkManager/system-connections"
-        self.assertEqual(sorted(p.name for p in nm.iterdir()), ["Home.nmconnection"])
+        self.assertEqual(sorted(p.name for p in nm.iterdir()), ["netplan-NM-1234-Home.nmconnection"])
 
     def test_install_is_verified_before_it_reports_success(self):
         r = self.write()

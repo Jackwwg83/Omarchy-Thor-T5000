@@ -59,6 +59,7 @@ done
 MNT=${RAYTONE_TARGET_MOUNT:-/mnt/raytone-target}
 HOST_ETC=${RAYTONE_HOST_ETC:-/etc}
 HOST_HOME=${RAYTONE_HOST_HOME:-/home/$user}
+HOST_RUN=${RAYTONE_HOST_RUN:-/run}
 MIRROR=${PKG_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/archlinuxarm}
 ROOT_DEV=${dev}2
 HOSTNAME_=raytone-thor
@@ -73,13 +74,17 @@ KVER=6.8.12-1021-tegra
 { set +x; } 2>/dev/null
 awk -F: -v u="$user" '$1 == u {print $2}' "$HOST_ETC/shadow" 2>/dev/null | grep -q '^\$' ||
   die "no password hash for $user in $HOST_ETC/shadow"
-NM_PROFILES=()   # the host's active, file-backed NetworkManager profiles
+NM_PROFILES=()   # the host's active Wi-Fi and Ethernet profiles; on JetPack netplan keeps them in /run
 while IFS= read -r line; do
-  f=${line##*:}
-  [[ $f == /etc/NetworkManager/system-connections/* ]] || continue
-  f=$HOST_ETC/NetworkManager/system-connections/${f##*/}
+  type=${line%%:*} f=${line#*:}
+  [[ $type == 802-11-wireless || $type == 802-3-ethernet ]] || continue
+  case $f in
+    /etc/NetworkManager/system-connections/*) f=$HOST_ETC/NetworkManager/system-connections/${f##*/} ;;
+    /run/NetworkManager/system-connections/*) f=$HOST_RUN/NetworkManager/system-connections/${f##*/} ;;
+    *) continue ;;
+  esac
   [[ -f $f ]] && NM_PROFILES+=("$f")
-done < <(nmcli -t -g NAME,FILENAME connection show --active 2>/dev/null)
+done < <(nmcli -t -g TYPE,FILENAME connection show --active 2>/dev/null)
 ((${#NM_PROFILES[@]})) || die "no active NetworkManager profile to copy; the drive would have no network"
 
 if ((!write)); then
