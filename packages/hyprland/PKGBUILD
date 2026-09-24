@@ -71,7 +71,7 @@ _archive="${pkgname^}-$pkgver"
 source=("$_archive.tar.gz::$url/releases/download/v$pkgver/source-v$pkgver.tar.gz"
         egl-render-node.patch)
 sha256sums=('03ad3f5ef152ff44116ffd56fcf808486211ecabf4f0ba567108ee746ba5cd2e'
-            'acea175d76be60212ce90c1a61280a61cc82409efc9d297d34ee8c138f359985')
+            '6daefa741eda614ce626e510e9a215b1ee8adb844edac52e51b3b62c756c24e4')
 
 prepare() {
 	ln -sf hyprland-source "$_archive"

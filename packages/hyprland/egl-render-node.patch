@@ -1,5 +1,5 @@
 diff --git a/src/protocols/LinuxDMABUF.cpp b/src/protocols/LinuxDMABUF.cpp
-index 897c98d..4b97ae2 100644
+index 897c98d..cbbb226 100644
 --- a/src/protocols/LinuxDMABUF.cpp
 +++ b/src/protocols/LinuxDMABUF.cpp
 @@ -453,6 +453,18 @@ CLinuxDMABufV1Protocol::CLinuxDMABufV1Protocol(const wl_interface* iface, const
@@ -8,7 +8,7 @@ index 897c98d..4b97ae2 100644
  
 +        // On split display/GPU devices (NVIDIA Jetson Thor) the compositor's render node belongs to the
 +        // display device, which clients cannot render with; advertise the EGL device's render node instead.
-+        auto eglNode = g_pHyprOpenGL ? g_pHyprOpenGL->eglDeviceRenderNode() : std::nullopt;
++        auto eglNode = Render::GL::g_pHyprOpenGL ? Render::GL::g_pHyprOpenGL->eglDeviceRenderNode() : std::nullopt;
 +        if (eglNode) {
 +            struct stat st;
 +            if (stat(eglNode->c_str(), &st) == 0 && S_ISCHR(st.st_mode) && st.st_rdev != m_mainDevice) {
@@ -39,7 +39,7 @@ index 897c98d..4b97ae2 100644
              // Already using the compositor's render node, reuse it.
              m_mainDeviceFD = CFileDescriptor{fcntl(g_pCompositor->m_drmRenderNode.fd, F_DUPFD_CLOEXEC, 0)};
 diff --git a/src/protocols/MesaDRM.cpp b/src/protocols/MesaDRM.cpp
-index c73d98c..d276981 100644
+index c73d98c..682fec4 100644
 --- a/src/protocols/MesaDRM.cpp
 +++ b/src/protocols/MesaDRM.cpp
 @@ -134,6 +134,12 @@ CMesaDRMProtocol::CMesaDRMProtocol(const wl_interface* iface, const int& ver, co
@@ -47,7 +47,7 @@ index c73d98c..d276981 100644
      }
  
 +    // Split display/GPU devices (NVIDIA Jetson Thor): clients must use the EGL device's render node.
-+    if (auto eglNode = g_pHyprOpenGL ? g_pHyprOpenGL->eglDeviceRenderNode() : std::nullopt; eglNode && *eglNode != m_nodeName) {
++    if (auto eglNode = Render::GL::g_pHyprOpenGL ? Render::GL::g_pHyprOpenGL->eglDeviceRenderNode() : std::nullopt; eglNode && *eglNode != m_nodeName) {
 +        LOGM(Log::DEBUG, "Advertising the EGL device render node {} instead of {}", *eglNode, m_nodeName);
 +        m_nodeName = *eglNode;
 +    }
