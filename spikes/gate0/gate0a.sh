@@ -40,7 +40,10 @@ check_work() {
 fetch_rootfs() (
   mkdir -p "$CACHE" "$EVID"
   cd "$CACHE"
-  [[ -f $TARBALL ]] || curl -fL --retry 3 -o "$TARBALL" "$MIRROR/$TARBALL"
+  if [[ ! -f $TARBALL ]]; then
+    curl -fL --retry 5 -C - -o "$TARBALL.part" "$MIRROR/$TARBALL"
+    mv "$TARBALL.part" "$TARBALL"
+  fi
   curl -fsL -o "$TARBALL.md5" "$MIRROR/$TARBALL.md5"
   curl -fsL -o "$TARBALL.sig" "$MIRROR/$TARBALL.sig"
   md5sum -c "$TARBALL.md5"
@@ -116,6 +119,9 @@ inside() {
   mount -t tmpfs -o mode=1777 tmpfs "$ROOT/tmp"
   rm -f "$ROOT/etc/resolv.conf" && cat /etc/resolv.conf > "$ROOT/etc/resolv.conf"
 
+  if [[ -n ${PKG_MIRROR:-} ]]; then
+    printf 'Server = %s/$arch/$repo\n' "$PKG_MIRROR" > "$ROOT/etc/pacman.d/mirrorlist"
+  fi
   if [[ ! -f $ROOT/.raytone-probe-ready ]]; then
     in_root pacman-key --init
     in_root pacman-key --populate archlinuxarm
@@ -199,7 +205,7 @@ case ${1:-all} in
     host_facts
     rc=0
     sudo unshare --mount --pid --fork --propagation private -- \
-      env RAYTONE_NS=1 WORK="$WORK" bash "$SCRIPT" inside || rc=$?
+      env RAYTONE_NS=1 WORK="$WORK" PKG_MIRROR="${PKG_MIRROR:-}" bash "$SCRIPT" inside || rc=$?
     sudo chown -R "$(id -u):$(id -g)" "$EVID"
     exit $rc
     ;;
