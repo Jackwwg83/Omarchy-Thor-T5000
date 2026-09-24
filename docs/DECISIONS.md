@@ -194,6 +194,16 @@ with three minimal changes plus two strengthening suggestions. Claude agrees wit
 | The ready record did not cover grubenv | `publish` refuses a grubenv that already has `next_entry`, so the first boot after publish is the default |
 | machine-id: empty is not "first boot" (see the corrected row above); check the ID's format | Generating an ID stays. The ID must be 32 hex digits, not all zeros, and not JetPack's |
 
+### Round 4: go
+
+Codex reviewed `5504a7c..f1febe9` ([raw](reviews/2026-09-25-codex-boot1b-review4.md)). Verdict: "可以执行
+（重跑 install-thor-root.sh 和 staged install，早上按 DECISIONS.md 的有人值守步骤测试）". It found nothing that
+must change. Its optional points:
+- The comments said more than the code guarantees. They are narrowed: sysrq applies only after the immediate-reboot level; the guard's own commands still run from the drive; the mask scan covers `/usr/lib/systemd/system` by name.
+- Keep the list of masked units as evidence. Done from the real install ([masked-units.txt](evidence/slice1b/masked-units.txt)).
+- Check `CONFIG_MAGIC_SYSRQ` on the drive's kernel during the attended boot.
+- Background log writes are not capped. Accepted for a short, attended test.
+
 Accepted as the attended test's job (no change): a hang before PID 1 or of PID 1 itself is not recovered
 automatically, the hardware watchdog is unproven, and a forced reboot may leave the USB root needing fsck.
 

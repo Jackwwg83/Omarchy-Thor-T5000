@@ -22,11 +22,12 @@
 # /var/lib/raytone/boots.log. NVIDIA's systemd watchdog setting (RuntimeWatchdogSec=120) comes with
 # raytone-thor-core. The drive gets a machine ID and a console keymap, so its first boot is not a
 # systemd "first boot" (no interactive systemd-firstboot, no preset-all). The running system mounts
-# efivarfs read-only once systemd-remount-fs has run. Every systemd unit on the drive that can write
-# UEFI variables or TPM state is masked, whatever would start it (boot, a socket, logind, a
-# generator): all systemd-pcr*, systemd-tpm2-*, factory-reset, bless-boot, hibernate and the
-# boot-update / boot-random-seed / boot-clear-sysfail units, found by name in the target. So are
-# systemd-repart and the sleep targets. Nothing that writes UEFI variables (efibootmgr, grub, fwupd)
+# efivarfs read-only once systemd-remount-fs has run. Units that can write UEFI variables or TPM
+# state are masked whatever would start them (boot, a socket, logind, a generator): every unit in the
+# drive's /usr/lib/systemd/system named systemd-pcr*, systemd-tpm2-*, *factory-reset*, bless-boot,
+# hibernate or boot-update / boot-random-seed / boot-clear-sysfail (MASK_RE). Units elsewhere or
+# under other names are not covered by this scan. systemd-repart and the sleep targets are masked
+# too. Nothing that writes UEFI variables (efibootmgr, grub, fwupd)
 # is installed. A dry run unless --write.
 # Tests: tests/test_install_thor_root.py (RAYTONE_* variables exist for them).
 set -euo pipefail
