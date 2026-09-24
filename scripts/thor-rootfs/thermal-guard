@@ -3,26 +3,36 @@
 # After a grace period for start-up, checks every 30 s and reboots (back to the GRUB default,
 # JetPack) when no thermal zone can be read, any zone is at or above 95 C, or nvfancontrol is not
 # running. Temperatures are judged before anything else is queried; every external command has a
-# hard limit (TERM, then KILL). A refused reboot is forced, and a refused forced reboot becomes an
-# immediate one. The guard keeps checking after a request, so a reboot that never happens is asked
-# for again. The fan tach is logged only: it is not a stall detector.
+# hard limit (TERM, then KILL). A refused reboot is forced, a refused forced reboot becomes an
+# immediate one, and if the machine is still up after that, sysrq reboots it without syncing (the
+# USB root may then need fsck). The guard keeps checking after a request, so a reboot that never
+# happens is asked for again. Log lines are written in the background, so a stuck drive cannot stop
+# the guard. The fan tach is logged only: it is not a stall detector.
 # RAYTONE_* variables exist for tests/test_thermal_guard.py.
 sys=${RAYTONE_SYS:-/sys}
 log=${RAYTONE_GUARD_LOG:-/var/lib/raytone/thermal.log}
 grace=${RAYTONE_GUARD_GRACE:-90}
 interval=${RAYTONE_GUARD_INTERVAL:-30}
 checks=${RAYTONE_GUARD_CHECKS:-0}   # 0: run until shutdown
+sysrq=${RAYTONE_SYSRQ:-/proc/sysrq-trigger}
+last_wait=${RAYTONE_GUARD_LAST_WAIT:-30}
 limit=95000
 
 bounded() { timeout -k 2 "$@"; }   # bounded SECONDS CMD...
+say() { echo "$*" >> "$log" 2> /dev/null & }
 
 protect() {   # protect LOGLINE
-  echo "$1 thermal guard: rebooting" >> "$log"
+  say "$1 thermal guard: rebooting"
   bounded 30 systemctl reboot && return
-  echo "$(date -Is) thermal guard: reboot refused, forcing" >> "$log"
+  say "$(date -Is) thermal guard: reboot refused, forcing"
   bounded 30 systemctl reboot --force && return
-  echo "$(date -Is) thermal guard: forced reboot refused, rebooting immediately" >> "$log"
-  systemctl reboot --force --force
+  say "$(date -Is) thermal guard: forced reboot refused, rebooting immediately"
+  # An immediate reboot syncs first, and sync() can block beyond any timeout: run it in the
+  # background, and if the machine is still up afterwards, reboot through sysrq without syncing.
+  systemctl reboot --force --force > /dev/null 2>&1 &
+  sleep "$last_wait"
+  say "$(date -Is) thermal guard: still up, sysrq reboot"
+  echo b > "$sysrq"
 }
 
 mkdir -p "$(dirname "$log")"
@@ -52,7 +62,7 @@ while :; do
       line="$line fan_rpm=$rpm"
       # Power mode on the first check and then every 10 minutes.
       [ $((n % 20)) -eq 0 ] && line="$line $(bounded 5 nvpmodel -q 2>/dev/null | tr '\n' ' ')"
-      echo "$line" >> "$log"
+      say "$line"
     fi
   fi
   n=$((n + 1))

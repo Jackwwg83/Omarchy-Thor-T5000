@@ -25,6 +25,9 @@ STUB = textwrap.dedent("""\
         echo "NV Power Mode: MAXN" ;;
       "systemctl reboot") [ -f "$STATE/reboot-refused" ] && exit 1 ;;
       "systemctl reboot --force") [ -f "$STATE/force-refused" ] && exit 1 ;;
+      "systemctl reboot --force --force")
+        [ -f "$STATE/immediate-hangs" ] && sleep 20
+        [ -f "$STATE/immediate-refused" ] && exit 1 ;;
     esac
     exit 0
     """)
@@ -57,7 +60,8 @@ class ThermalGuardTests(unittest.TestCase):
     def run_guard(self, checks=1, timeout=20):
         env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}", STATE=str(self.state),
                    RAYTONE_SYS=str(self.sys), RAYTONE_GUARD_LOG=str(self.log / "thermal.log"),
-                   RAYTONE_GUARD_GRACE="0", RAYTONE_GUARD_INTERVAL="0", RAYTONE_GUARD_CHECKS=str(checks))
+                   RAYTONE_GUARD_GRACE="0", RAYTONE_GUARD_INTERVAL="0", RAYTONE_GUARD_CHECKS=str(checks),
+                   RAYTONE_SYSRQ=str(self.state / "sysrq-trigger"), RAYTONE_GUARD_LAST_WAIT="1")
         return subprocess.run(["sh", str(GUARD)], env=env, capture_output=True, text=True, timeout=timeout)
 
     def calls(self):
@@ -102,6 +106,32 @@ class ThermalGuardTests(unittest.TestCase):
         (self.state / "force-refused").touch()
         self.run_guard(checks=1)
         self.assertIn("systemctl reboot --force --force", self.calls())
+
+    def sysrq(self):
+        f = self.state / "sysrq-trigger"
+        return f.read_text() if f.exists() else ""
+
+    def test_a_refused_immediate_reboot_falls_back_to_sysrq(self):
+        self.zones(52000, 96000)
+        for flag in ("reboot-refused", "force-refused", "immediate-refused"):
+            (self.state / flag).touch()
+        self.run_guard(checks=1)
+        self.assertEqual(self.sysrq(), "b\n")
+
+    def test_a_hanging_immediate_reboot_does_not_block_the_guard(self):
+        self.zones(52000, 96000)
+        for flag in ("reboot-refused", "force-refused", "immediate-hangs"):
+            (self.state / flag).touch()
+        r = self.run_guard(checks=2, timeout=15)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # the second check ran although the first immediate reboot never returned
+        self.assertEqual(self.calls().count("systemctl reboot --force --force"), 2)
+        self.assertEqual(self.sysrq(), "b\n")
+
+    def test_sysrq_is_not_touched_when_a_reboot_request_is_accepted(self):
+        self.zones(52000, 96000)
+        self.run_guard(checks=1)
+        self.assertEqual(self.sysrq(), "")
 
     def test_the_guard_keeps_watching_after_requesting_a_reboot(self):
         self.zones(52000, 96000)
