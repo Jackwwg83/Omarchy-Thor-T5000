@@ -1,7 +1,7 @@
 #!/bin/bash
 # Install GRUB and the RaytoneOS boot menu on the Thor USB drive's ESP, or arm a one-shot entry.
 #
-#   install-thor-boot.sh install  --entries ENTRIES.json --disk DISK --serial S --tools-root DIR [--write --confirm-serial S]
+#   install-thor-boot.sh install  --entries ENTRIES.json [--default ID] --disk DISK --serial S --tools-root DIR [--write --confirm-serial S]
 #   install-thor-boot.sh arm-once --entry ID             --disk DISK --serial S --tools-root DIR [--write --confirm-serial S]
 #
 # DISK is the drive's /dev/disk/by-id/usb-* link, laid out by make-thor-usb.sh. grub-install runs in
@@ -20,7 +20,7 @@ source "$HERE/lib/usb.sh"
 
 cmd=${1:-}
 shift || true
-disk='' serial='' write=0 confirm='' entries='' entry='' tools='' dev='' name=''
+disk='' serial='' write=0 confirm='' entries='' entry='' tools='' dev='' name='' default=firmware-next
 while (($#)); do
   case $1 in
     --disk) disk=${2:-}; shift 2 ;;
@@ -29,6 +29,7 @@ while (($#)); do
     --confirm-serial) confirm=${2:-}; shift 2 ;;
     --entries) entries=${2:-}; shift 2 ;;
     --entry) entry=${2:-}; shift 2 ;;
+    --default) default=${2:-}; shift 2 ;;
     --tools-root) tools=${2:-}; shift 2 ;;
     *) die "unknown argument $1" ;;
   esac
@@ -56,7 +57,8 @@ identity
 not_in_use
 check_layout
 if [[ $cmd == install ]]; then
-  menu=$(python3 "$HERE/thor_boot.py" grub-cfg --entries "$entries") || die "cannot render grub.cfg from $entries"
+  menu=$(python3 "$HERE/thor_boot.py" grub-cfg --entries "$entries" --default "$default") ||
+    die "cannot render grub.cfg from $entries"
 fi
 if ((!write)); then
   echo "target: $disk -> $dev ($ESP_DEV is the ESP)"

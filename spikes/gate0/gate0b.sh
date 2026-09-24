@@ -18,7 +18,7 @@ ASSETS=$(dirname "$SCRIPT_0B")/gate0b
 EVID_BASE=$WORK/evidence/gate0b
 EVID=${RUN_EVID:-$EVID_BASE}
 PKGS_0B=(hyprland seatd foot xorg-xwayland mesa-utils vulkan-tools quickshell chromium grim wayland-utils
-         gtk4-demos ttf-dejavu egl-wayland egl-gbm git meson ninja gcc pkgconf libdrm)
+         gtk4-demos ttf-dejavu egl-wayland egl-gbm git meson ninja gcc pkgconf libdrm grub dtc)
 KMSCUBE_REPO=https://gitlab.freedesktop.org/mesa/kmscube.git
 UNIT=raytone-gate0b
 RESTORE=raytone-gdm-restore

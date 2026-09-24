@@ -102,3 +102,24 @@ boot slots, BIOS version) compared unchanged after every run; GDM came back each
 Hyprland; eye confirmation owed to the owner. Open: Hyprland's SIGSEGV at exit. Worth offering the
 render-node patch upstream (hyprwm/Hyprland), since it only acts when the EGL device reports a
 render node different from the compositor's.
+
+## 2026-09-24 — Slice 1a: no unattended reboot (consult points 3 and 4)
+
+Codex reviewed the format/GRUB/reboot runbook ([raw](reviews/2026-09-24-codex-slice1a-review.md)) and advised
+against running it unattended. Claude agrees; there is no disagreement to escalate.
+
+| Finding | Decision |
+| --- | --- |
+| GRUB 2.14's `exit` always returns `EFI_SUCCESS`; edk2 then opens its boot manager menu instead of trying the next boot option, so the planned "hand back to the firmware" fallback would strand the machine | Dropped as a recovery path. `exit` stays only as a manual menu item |
+| A failed `search` leaves `root` on the USB ESP, so `chainloader /EFI/BOOT/BOOTAA64.efi` would load the USB's own GRUB | Every entry boots only inside `if search ...; then ... boot; fi`; otherwise it reboots after a pause |
+| `fallback` takes entry numbers, not ids | Rendered as a number |
+| The one-shot switched `default` without checking `save_env` | `default` changes only if `save_env` succeeded; `load_env` reads only `next_entry` |
+| `lsblk -l` pads columns, so the layout check would reject a correct drive | `--raw` output |
+| Automount suppression was applied after the in-use checks, and not at all by the installer | Rule first, then checks; checks repeated before each destructive step |
+| The removable boot file was written before the rest of the ESP was verified | `install` leaves the USB unbootable (`BOOTAA64.EFI.staged`); a separate `publish` step, taken only with someone present, verifies the ESP with `grub-script-check` and makes it bootable |
+| Rendered fields were not validated | Ids, titles, UUIDs, paths and kernel arguments validated before rendering |
+| "No NVMe writes" was read as covering the tools root and JetPack's own operation | Scope clarified: prohibited are the NVMe partition table, the NVMe ESP, JetPack's boot configuration, UEFI variables and QSPI. `~/raytone` on the NVMe is the approved work area |
+
+Overnight, work continues on everything that needs no reboot: the fixes above (test-first), formatting
+the drive, staging GRUB, repackaging L4T and installing the Arch root on the drive. Publishing the ESP
+and the reboot tests (default path first, then the one-shot, then Arch) wait for an observer.

@@ -129,6 +129,11 @@ class InstallThorBootTests(unittest.TestCase):
         self.assertIn("--id jetpack-grub", cfg)
         self.assertEqual((self.esp / "boot" / "grub" / "grubenv").stat().st_size, 1024)
 
+    def test_default_entry_can_be_chosen(self):
+        r = self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('set default="jetpack-grub"', r.stdout)
+
     def test_arm_once_sets_next_entry_and_reads_it_back(self):
         self.run_script("install", "--entries", str(self.entries), "--write", "--confirm-serial", SERIAL)
         r = self.run_script("arm-once", "--entry", "jetpack-grub", "--write", "--confirm-serial", SERIAL)

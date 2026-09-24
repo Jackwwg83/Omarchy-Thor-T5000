@@ -80,6 +80,35 @@ class GrubCfgTests(unittest.TestCase):
             tb.grub_cfg([tb.Entry(id="firmware-next", title="x", fs_uuid="1", kernel="/k", initrd=None, cmdline="")])
 
 
+class ChainloadTests(unittest.TestCase):
+    def menu(self, default="jetpack-nvme"):
+        return tb.grub_cfg([
+            tb.Entry(id="jetpack-nvme", title="JetPack on the internal NVMe (its own boot loader)", fs_uuid="ABCD-1234",
+                     kernel=None, initrd=None, cmdline="", chainload="/EFI/BOOT/BOOTAA64.efi"),
+            tb.Entry(id="jetpack-grub", title="JetPack kernel via GRUB", fs_uuid="1111-aaaa",
+                     kernel="/boot/Image", initrd="/boot/initrd", cmdline="root=PARTUUID=x rw"),
+        ], default=default)
+
+    def test_chainload_entry_loads_the_other_boot_loader(self):
+        block = self.menu().split("--id jetpack-nvme")[1].split("}")[0]
+        self.assertIn("search --no-floppy --fs-uuid --set=root ABCD-1234", block)
+        self.assertIn("chainloader /EFI/BOOT/BOOTAA64.efi", block)
+        self.assertNotIn("linux ", block)
+
+    def test_default_can_be_an_entry_and_fallback_stays_the_firmware(self):
+        cfg = self.menu()
+        self.assertIn('set default="jetpack-nvme"', cfg)
+        self.assertIn('set fallback="firmware-next"', cfg)
+
+    def test_default_must_exist(self):
+        with self.assertRaises(ValueError):
+            self.menu(default="arch")
+
+    def test_an_entry_needs_a_kernel_or_a_chainload_target(self):
+        with self.assertRaises(ValueError):
+            tb.grub_cfg([tb.Entry(id="x", title="x", fs_uuid="1", kernel=None, initrd=None, cmdline="")])
+
+
 class GrubInstallArgsTests(unittest.TestCase):
     def test_install_arguments_never_touch_nvram(self):
         args = tb.grub_install_args("/mnt/esp")
