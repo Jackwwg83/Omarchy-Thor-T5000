@@ -49,3 +49,33 @@ All eight findings were applied before the first run:
 | pacman 7 sandbox and stale keyrings not handled | Refresh `archlinuxarm-keyring` first; `DisableSandbox` only if the sandbox is the failure |
 | Deny-list for L4T libraries, fixed driver version, Mesa fallback could pass as NVIDIA | NVIDIA-name allowlist with excluded files logged; duplicate names abort; driver version read from `modinfo`; NVIDIA-only and default EGL runs recorded separately |
 | Probe failures did not change the exit status | Per-probe exit codes, 90 s timeouts, summary with pass/fail, non-zero exit on any failure |
+
+## 2026-09-24 — Gate 0a result and Gate 0b probe (consult point 2)
+
+Gate 0a showed the Orin failure mode (FBO on an imported dma-buf) does not occur on Thor; see
+[evidence/gate0a](evidence/gate0a/README.md). Two design changes followed: the EGL platform glue
+(egl-wayland, egl-gbm) is registered by absolute path in a directory chosen per run through
+`__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS`, instead of by soname in the shared directory (which also collided
+with Arch's `egl-wayland`/`egl-gbm` package files); and gate0a.sh became a library for gate0b.sh.
+
+Codex reviewed gate0b.sh three times before the first run ("not safe to run" twice, then two remaining
+items). Everything below was applied:
+
+| Finding | Change |
+| --- | --- |
+| Dead-man timer only started GDM; no bound on the test | Transient unit with `RuntimeMaxSec=900` and `ExecStopPost` that starts GDM however the unit ends; the 20-minute timer stops the unit first |
+| seatd socket group came from the chroot's `video`, not the host GID the session runs with (would fail Hyprland for a harness reason) | `seatd -u probe`; readiness through `-n` on a FIFO plus liveness and socket checks |
+| kmscube did not use the glue under test | kmscube gets the L4T glue directory explicitly |
+| egl-wayland A/B also changed egl-gbm | Both rounds keep L4T egl-gbm; only egl-wayland differs; loaded libraries hashed per process |
+| Rounds shared PID space, HOME and browser profile | Every process in the namespace except PID 1 is killed between rounds; separate HOME, runtime dir and profile |
+| Failures, timeouts and invalid screenshots did not change the result | Required checks per round, completion marker, per-step exit codes, `--kill-after` on every bound |
+| Query failures in the boot-state snapshot compared as "unchanged" | Per-query exit codes; only two successful queries are compared, otherwise "unverified" |
+| `apt-mark hold` without a record of which holds were new | `apt-holds-added.txt` from a before/after set difference |
+| GDM restore failure swallowed and the timer disarmed | Three bounded restore attempts; on failure the unit exits non-zero and the timer stays armed |
+| `fuser` exit codes read as "display released" | Holders found by scanning `/proc/*/fd` |
+| No observer: on-screen output was only asserted | Scanout judged from two DRM state samples (HDMI CRTC active, primary plane framebuffer at 2560×1440, framebuffer changing for kmscube) by `drm_scanout.py`; still to be confirmed by eye |
+
+Found by Claude in the same pass: stopping GDM leaves the user's GNOME Xorg session (it held `card3`),
+so the run also terminates X11/Wayland sessions and waits until nothing holds the display node.
+
+The owner granted autonomous use of the machine overnight, so the run went ahead without an observer.
