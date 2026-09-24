@@ -37,9 +37,14 @@ STUB = textwrap.dedent("""\
         if [[ $1 == grub-script-check ]]; then
           [[ -f $STATE/script-check-fails ]] && exit 1
         elif [[ $1 == grub-install ]]; then
-          esp=$(printf '%s\\n' "$@" | sed -n 's/^--efi-directory=//p')
-          mkdir -p "$ESP_REAL/EFI/BOOT" "$ESP_REAL/boot/grub/arm64-efi"
-          touch "$ESP_REAL/EFI/BOOT/BOOTAA64.EFI"
+          efidir=$(printf '%s\\n' "$@" | sed -n 's/^--efi-directory=//p')
+          efidir=${efidir/\\/mnt\\/raytone-esp/$ESP_REAL}
+          # the firmware only looks at EFI/BOOT/BOOTAA64.EFI at the root of the ESP
+          [[ -e $ESP_REAL/EFI/BOOT/BOOTAA64.EFI ]] && echo "bootable-while-installing" >> "$STATE/calls"
+          [[ -d $efidir ]] || { echo "grub-install: error: cannot find EFI directory" >&2; exit 1; }
+          mkdir -p "$efidir/EFI/BOOT" "$ESP_REAL/boot/grub/arm64-efi"
+          touch "$efidir/EFI/BOOT/BOOTAA64.EFI"
+          [[ -f $STATE/grub-install-fails ]] && exit 1
           for m in normal part_gpt fat ext2 search_fs_uuid chain linux loadenv reboot sleep echo test; do
             touch "$ESP_REAL/boot/grub/arm64-efi/$m.mod"
           done
@@ -134,6 +139,35 @@ class InstallThorBootTests(unittest.TestCase):
         r = self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write",
                             "--confirm-serial", SERIAL)
         self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse((self.esp / "EFI" / "BOOT" / "BOOTAA64.EFI").exists())
+        self.assertTrue((self.esp / "EFI" / "BOOT" / "BOOTAA64.EFI.staged").exists())
+
+    def test_grub_install_never_writes_the_firmware_boot_path(self):
+        r = self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write",
+                            "--confirm-serial", SERIAL)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        grub = next(c for c in self.calls() if c.startswith("in-chroot grub-install"))
+        self.assertNotIn("--efi-directory=/mnt/raytone-esp ", grub + " ")
+        self.assertNotIn("bootable-while-installing", self.calls())
+        self.assertEqual(sorted(p.name for p in self.esp.iterdir()), ["EFI", "boot"])
+
+    def test_failed_grub_install_leaves_the_drive_unbootable(self):
+        (self.state / "grub-install-fails").touch()
+        r = self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write",
+                            "--confirm-serial", SERIAL)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertFalse((self.esp / "EFI" / "BOOT" / "BOOTAA64.EFI").exists())
+
+    def test_install_over_a_published_drive_unpublishes_it_first(self):
+        self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write",
+                        "--confirm-serial", SERIAL)
+        self.run_script("publish", "--write", "--confirm-serial", SERIAL)
+        self.assertTrue((self.esp / "EFI" / "BOOT" / "BOOTAA64.EFI").exists())
+        (self.state / "calls").unlink()
+        r = self.run_script("install", "--entries", str(self.entries), "--default", "jetpack-grub", "--write",
+                            "--confirm-serial", SERIAL)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("bootable-while-installing", self.calls())
         self.assertFalse((self.esp / "EFI" / "BOOT" / "BOOTAA64.EFI").exists())
         self.assertTrue((self.esp / "EFI" / "BOOT" / "BOOTAA64.EFI.staged").exists())
 

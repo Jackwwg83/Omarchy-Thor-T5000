@@ -10,8 +10,9 @@
 # The drive is laid out by make-thor-usb.sh. grub-install runs in the tools root (an Arch Linux ARM
 # root with the grub package) inside a private mount namespace whose sysfs is read-only and has no
 # efivarfs, with --removable --no-nvram: no UEFI variable can be written. Only the drive's ESP is
-# mounted read-write. `install` keeps the removable loader as BOOTAA64.EFI.staged, so the firmware
-# goes on skipping the drive; `publish` (taken with someone present, since a bad boot cannot be
+# mounted read-write. `install` has grub-install write its removable loader into a staging directory
+# the firmware never looks at and keeps it as BOOTAA64.EFI.staged, so the drive is not bootable at any
+# point of an install, even an interrupted one; `publish` (taken with someone present, since a bad boot cannot be
 # recovered remotely) checks grub.cfg with grub-script-check, the environment block and the modules
 # the menu uses, then renames it. The menu comes from thor_boot.py. A dry run unless --write.
 # Tests: tests/test_install_thor_boot.py (RAYTONE_* variables exist for them).
@@ -52,6 +53,7 @@ BOOT=/mnt/raytone-esp                       # the ESP, as seen inside the tools 
 ESP_MNT=${RAYTONE_ESP_MOUNT:-$tools$BOOT}   # the same mount, from the host
 ESP_DEV=${dev}1
 LOADER=EFI/BOOT/BOOTAA64.EFI
+STAGING=raytone-staging                     # grub-install's --efi-directory, below the ESP root
 # Modules the generated menu needs beyond GRUB's core image.
 MODULES=(normal part_gpt fat ext2 search_fs_uuid chain linux loadenv reboot sleep echo test)
 
@@ -99,14 +101,24 @@ size_of() { stat -c %s "$1" 2>/dev/null || stat -f %z "$1"; }
 
 case $cmd in
   install)
-    echo "+ grub-install into $ESP_DEV (removable loader kept staged)"
-    in_tools grub-install --target=arm64-efi "--efi-directory=$BOOT" "--boot-directory=$BOOT/boot" --removable --no-nvram
-    [[ -f $ESP_MNT/$LOADER ]] || die "$LOADER missing after grub-install"
-    mv -f "$ESP_MNT/$LOADER" "$ESP_MNT/$LOADER.staged"
+    # A drive published earlier stops being bootable before anything else changes.
+    if [[ -e $ESP_MNT/$LOADER ]]; then
+      mkdir -p "$ESP_MNT/EFI/BOOT" && mv -f "$ESP_MNT/$LOADER" "$ESP_MNT/$LOADER.staged" && sync
+      echo "unpublished: $LOADER moved to $LOADER.staged"
+    fi
+    echo "+ grub-install into $ESP_DEV/$STAGING (the firmware does not look there)"
+    rm -rf "${ESP_MNT:?}/$STAGING" && mkdir -p "$ESP_MNT/$STAGING"
+    in_tools grub-install --target=arm64-efi "--efi-directory=$BOOT/$STAGING" "--boot-directory=$BOOT/boot" \
+      --removable --no-nvram || die "grub-install failed; the drive is still not bootable"
+    [[ -f $ESP_MNT/$STAGING/$LOADER ]] || die "$STAGING/$LOADER missing after grub-install"
+    mkdir -p "$ESP_MNT/EFI/BOOT"
+    mv -f "$ESP_MNT/$STAGING/$LOADER" "$ESP_MNT/$LOADER.staged"
+    rm -rf "${ESP_MNT:?}/$STAGING"
     mkdir -p "$ESP_MNT/boot/grub"
     printf '%s\n' "$menu" > "$ESP_MNT/boot/grub/grub.cfg"
     in_tools grub-editenv "$BOOT/boot/grub/grubenv" create
     [[ $(size_of "$ESP_MNT/boot/grub/grubenv") == 1024 ]] || die "grubenv is not a 1024-byte environment block"
+    [[ ! -e $ESP_MNT/$LOADER ]] || die "$LOADER exists after install; the drive must stay unbootable"
     sync
     echo "staged: $LOADER.staged, boot/grub/grub.cfg, boot/grub/grubenv. The drive is not bootable until 'publish'."
     ;;
