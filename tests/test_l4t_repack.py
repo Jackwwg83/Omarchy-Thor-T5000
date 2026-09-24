@@ -43,6 +43,13 @@ class MapPathTests(unittest.TestCase):
         self.assertEqual(rp.map_path("/usr/share/doc/nvidia-l4t-core/copyright", pkgname="raytone-thor-core"),
                          "/usr/share/licenses/raytone-thor-core/nvidia-l4t-core.copyright")
 
+    def test_license_files_in_doc_become_license_files(self):
+        for name in ("LICENSE.libEGL_nvidia", "LICENSE.libnvidia-rtcore.gz", "LICENSE"):
+            with self.subTest(name=name):
+                self.assertEqual(rp.map_path(f"/usr/share/doc/nvidia-l4t-3d-core/{name}", pkgname="raytone-thor-graphics"),
+                                 f"/usr/share/licenses/raytone-thor-graphics/nvidia-l4t-3d-core.{name}")
+        self.assertIsNone(rp.map_path("/usr/share/doc/nvidia-l4t-3d-core/README.LICENSES.txt.gz"))
+
     def test_prohibited_items_are_dropped(self):
         for src in ("/usr/sbin/nv_update_engine", "/usr/sbin/nv_part_update", "/opt/ota/TEGRA_BL.Cap",
                     "/etc/systemd/system/nv-l4t-bootloader-config.service"):

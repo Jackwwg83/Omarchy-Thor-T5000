@@ -27,6 +27,10 @@ prohibited_path = _manifest.prohibited_path
 UNIT_RE = re.compile(r"^/etc/systemd/system/[^/]+\.(service|timer|path|socket|target|mount)$")
 
 
+# Debian's copyright file and NVIDIA's per-library LICENSE files move to /usr/share/licenses.
+LICENSE_RE = re.compile(r"^/usr/share/doc/([^/]+)/(copyright|LICENSE[^/]*)$")
+
+
 class RepackError(Exception):
     pass
 
@@ -36,7 +40,7 @@ def _drop_reason(path, exclude):
         return "prohibited"
     if re.match(r"^/etc/systemd/system/[^/]+\.(wants|requires)/", path):
         return "debian enablement link"
-    if path.startswith("/usr/share/lintian/") or (path.startswith("/usr/share/doc/") and not path.endswith("/copyright")):
+    if path.startswith("/usr/share/lintian/") or (path.startswith("/usr/share/doc/") and not LICENSE_RE.match(path)):
         return "debian metadata"
     for rx in exclude:
         if re.search(rx, path):
@@ -48,9 +52,9 @@ def map_path(path, pkgname="", exclude=()):
     """Target path in the Arch package for a path in a deb, or None when it is dropped."""
     if _drop_reason(path, exclude):
         return None
-    m = re.match(r"^/usr/share/doc/([^/]+)/copyright$", path)
+    m = LICENSE_RE.match(path)
     if m:
-        return f"/usr/share/licenses/{pkgname}/{m.group(1)}.copyright"
+        return f"/usr/share/licenses/{pkgname}/{m.group(1)}.{m.group(2)}"
     if UNIT_RE.match(path):
         return "/usr/lib/systemd/system/" + path.rsplit("/", 1)[1]
     if path.startswith("/etc/udev/rules.d/"):
