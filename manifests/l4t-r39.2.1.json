@@ -1,0 +1,180 @@
+{
+  "release": "r39.2",
+  "packages": [
+    {
+      "name": "nvidia-l4t-3d-core",
+      "version": "39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-3d-core/nvidia-l4t-3d-core_39.2.1-20260806224157_arm64.deb",
+      "sha256": "77fcb6c2c11ed67403f8e7697aab9d6ef11a2acbde86dd38a062a8945d5d8631",
+      "size": 142732666
+    },
+    {
+      "name": "nvidia-l4t-bsp",
+      "version": "39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-bsp/nvidia-l4t-bsp_39.2.1-20260806224157_arm64.deb",
+      "sha256": "8e96bb4a6a4343f02bbb434c79673aa8da8a269c67e05dd17298ea39ddfa35e2",
+      "size": 20286
+    },
+    {
+      "name": "nvidia-l4t-configs",
+      "version": "39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-configs/nvidia-l4t-configs_39.2.1-20260806224157_arm64.deb",
+      "sha256": "dd45cce107a89fe6efafe7d7429093893a2ab0a190b518d01be6ddeacd57f897",
+      "size": 1453054
+    },
+    {
+      "name": "nvidia-l4t-core",
+      "version": "39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-core/nvidia-l4t-core_39.2.1-20260806224157_arm64.deb",
+      "sha256": "277a6fb25f2c06cc2dee6d352bef3abb15929739f396fea1cee70d1dea83008b",
+      "size": 4093186
+    },
+    {
+      "name": "nvidia-l4t-cuda",
+      "version": "39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-cuda/nvidia-l4t-cuda_39.2.1-20260806224157_arm64.deb",
+      "sha256": "a8f65b17c3dc9cae34d77e3a3481b809a49443d83241d85d5fea36525af6ab51",
+      "size": 215986
+    },
+    {
+      "name": "nvidia-l4t-cuda-openrm",
+      "version": "39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-cuda-openrm/nvidia-l4t-cuda-openrm_39.2.1-20260806224157_arm64.deb",
+      "sha256": "ac4d4b377d9154cb92fb59ddb8292937fcd9ff44b53bd807459c54a03fc29787",
+      "size": 21878824
+    },
+    {
+      "name": "nvidia-l4t-cuda-utils",
+      "version": "39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-cuda-utils/nvidia-l4t-cuda-utils_39.2.1-20260806224157_arm64.deb",
+      "sha256": "6d143e637e37adf6ee34969a2f25526c03ef2e5513e6fcda267649792c84e870",
+      "size": 63850
+    },
+    {
+      "name": "nvidia-l4t-display-kernel",
+      "version": "6.8.12-tegra-39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-display-kernel/nvidia-l4t-display-kernel_6.8.12-tegra-39.2.1-20260806224157_arm64.deb",
+      "sha256": "fd7e47afde926bf443059d235106e1124c9a65fad21eaae5f082e8c59f6b1a43",
+      "size": 79168
+    },
+    {
+      "name": "nvidia-l4t-firmware",
+      "version": "39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-firmware/nvidia-l4t-firmware_39.2.1-20260806224157_arm64.deb",
+      "sha256": "ab95bcddebe7e49accb1a951a32052ec4cf3bb5e54c13407c9f0a89894f58178",
+      "size": 3682376
+    },
+    {
+      "name": "nvidia-l4t-firmware-openrm",
+      "version": "39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-firmware-openrm/nvidia-l4t-firmware-openrm_39.2.1-20260806224157_arm64.deb",
+      "sha256": "7efcfdb66b045fd2168665402745f1d781dbf2d44a354f2f355e4afe74466a20",
+      "size": 62169144
+    },
+    {
+      "name": "nvidia-l4t-gbm",
+      "version": "39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-gbm/nvidia-l4t-gbm_39.2.1-20260806224157_arm64.deb",
+      "sha256": "e84d118dcdab013b783f34416865c981a27fa669e91d054067e54ef3f724c6d1",
+      "size": 98506
+    },
+    {
+      "name": "nvidia-l4t-init",
+      "version": "39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-init/nvidia-l4t-init_39.2.1-20260806224157_arm64.deb",
+      "sha256": "26cfc6b244ba3d3bbf424732a1ffe0d9e21faa0298eaacc911b7466b5bd76b93",
+      "size": 43836
+    },
+    {
+      "name": "nvidia-l4t-init-openrm",
+      "version": "39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-init-openrm/nvidia-l4t-init-openrm_39.2.1-20260806224157_arm64.deb",
+      "sha256": "bb4220b9f165b5fa6fdf07222d76e9758e783ff8f1be4ba06800a5878f988300",
+      "size": 116454
+    },
+    {
+      "name": "nvidia-l4t-kernel",
+      "version": "6.8.12-tegra-39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-kernel/nvidia-l4t-kernel_6.8.12-tegra-39.2.1-20260806224157_arm64.deb",
+      "sha256": "91e8def02dcc45846a4f6ba70a258e29f436072ae42d0b547b86b3216dfe8d4f",
+      "size": 36468680
+    },
+    {
+      "name": "nvidia-l4t-kernel-headers",
+      "version": "6.8.12-tegra-39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-kernel-headers/nvidia-l4t-kernel-headers_6.8.12-tegra-39.2.1-20260806224157_arm64.deb",
+      "sha256": "e1c2bf37109913197b31293ce53ca642608fdb7f6d5859bfb372893fd721a17d",
+      "size": 19192916
+    },
+    {
+      "name": "nvidia-l4t-kernel-module-configs",
+      "version": "6.8.12-tegra-39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-kernel-module-configs/nvidia-l4t-kernel-module-configs_6.8.12-tegra-39.2.1-20260806224157_arm64.deb",
+      "sha256": "f8dc87bc50da83d3d69e64db2c1a306c2618fe0f51a069d131522305d12a2729",
+      "size": 21884
+    },
+    {
+      "name": "nvidia-l4t-kernel-oot-headers",
+      "version": "6.8.12-tegra-39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-kernel-oot-headers/nvidia-l4t-kernel-oot-headers_6.8.12-tegra-39.2.1-20260806224157_arm64.deb",
+      "sha256": "e8fb55e923bc4dfdda04c3ebb62f5f486f164321d5c4d08844a76218eba35740",
+      "size": 387548
+    },
+    {
+      "name": "nvidia-l4t-kernel-oot-modules",
+      "version": "6.8.12-tegra-39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-kernel-oot-modules/nvidia-l4t-kernel-oot-modules_6.8.12-tegra-39.2.1-20260806224157_arm64.deb",
+      "sha256": "636577601b61612d254db45e2034c10263d899d766a9699c7827a7ca82ce409d",
+      "size": 6770820
+    },
+    {
+      "name": "nvidia-l4t-kernel-openrm",
+      "version": "6.8.12-tegra-39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-kernel-openrm/nvidia-l4t-kernel-openrm_6.8.12-tegra-39.2.1-20260806224157_arm64.deb",
+      "sha256": "3a789d743e226ff2cf2e49d736224bfeebcb0ad4ae581b9ed8b1548c59c4f917",
+      "size": 11611248
+    },
+    {
+      "name": "nvidia-l4t-nvfancontrol",
+      "version": "39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-nvfancontrol/nvidia-l4t-nvfancontrol_39.2.1-20260806224157_arm64.deb",
+      "sha256": "3cc0463ed8e0b7c5ee6c03baa63bc14307a7ba3f46d93fb2959c52b49e4fb6a8",
+      "size": 37838
+    },
+    {
+      "name": "nvidia-l4t-nvml",
+      "version": "39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-nvml/nvidia-l4t-nvml_39.2.1-20260806224157_arm64.deb",
+      "sha256": "6c3e78ad11e84c3c677f2d9c60473ca52103ed378faab9ccf6a83f756b884b21",
+      "size": 1173992
+    },
+    {
+      "name": "nvidia-l4t-nvpmodel",
+      "version": "39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-nvpmodel/nvidia-l4t-nvpmodel_39.2.1-20260806224157_arm64.deb",
+      "sha256": "e434d97e0423476913808c58a769a419a7f39cf63dd4e7b4c6ddd97c8283f761",
+      "size": 57386
+    },
+    {
+      "name": "nvidia-l4t-nvsci",
+      "version": "39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-nvsci/nvidia-l4t-nvsci_39.2.1-20260806224157_arm64.deb",
+      "sha256": "7dc851490b23a4bba340786ee9b2fc51793c6c6bcdeca2fe0add5cadc0307423",
+      "size": 866512
+    },
+    {
+      "name": "nvidia-l4t-tools",
+      "version": "39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-tools/nvidia-l4t-tools_39.2.1-20260806224157_arm64.deb",
+      "sha256": "c73b0cb57f5c16055fca985252b62a5ce4e9e9b5f912f78bd73250d6e5db23c1",
+      "size": 532716
+    },
+    {
+      "name": "nvidia-l4t-wayland",
+      "version": "39.2.1-20260806224157",
+      "url": "https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-wayland/nvidia-l4t-wayland_39.2.1-20260806224157_arm64.deb",
+      "sha256": "980cb672d5aa6a0fe1b817ba23bc1646344d8233f6cfb6cdb1923c0c3fcd8b20",
+      "size": 54622
+    }
+  ]
+}

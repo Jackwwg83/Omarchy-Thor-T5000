@@ -79,6 +79,8 @@ def select(stanzas, name, version, base):
 
 def build(indexes, wanted, release):
     """indexes: [(base_url, path)], wanted: {name: version}. Every package must resolve exactly once."""
+    if not wanted:
+        raise ManifestError("no packages requested")
     parsed = [(base, parse_packages(open(path, encoding="utf-8").read())) for base, path in indexes]
     packages = []
     for name in sorted(wanted):

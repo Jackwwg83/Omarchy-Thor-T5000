@@ -96,6 +96,13 @@ class BuildTests(unittest.TestCase):
             self.assertEqual([p["name"] for p in manifest["packages"]], ["nvidia-l4t-core"])
             json.dumps(manifest)  # serialisable
 
+    def test_build_refuses_an_empty_wanted_list(self):
+        with tempfile.TemporaryDirectory() as d:
+            idx = pathlib.Path(d) / "Packages"
+            idx.write_text(PACKAGES)
+            with self.assertRaises(l4t.ManifestError):
+                l4t.build([("https://x", idx)], {}, release="r39.2")
+
     def test_build_fails_when_a_wanted_package_is_absent_from_every_index(self):
         with tempfile.TemporaryDirectory() as d:
             idx = pathlib.Path(d) / "Packages"
