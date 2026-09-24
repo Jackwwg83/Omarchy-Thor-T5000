@@ -9,11 +9,13 @@ Found while preparing the Arch boot entry. Read-only queries on the Thor.
 | Size | 52,484,608 bytes | 53,467,648 bytes |
 | sha256 | `4eb45aad…6cf6688` | `8e3738af…f866761e` (same as the deb's `boot/Image`) |
 
-The machine's vendor (Leetop) rebuilt the kernel from the same 6.8.12-1021-tegra tree. `dpkg --verify` over
-the kernel, OOT, OpenRM and display-kernel packages shows only two other changed files besides the
-regenerated `modules.*` indexes: `/boot/Image` and `updates/drivers/bluetooth/realtek/rtk_btusb.ko`. Every other
-module JetPack loads is NVIDIA's stock build, so the vendor kernel and NVIDIA's modules are
-ABI-compatible (they run together today).
+The machine's vendor (Leetop) rebuilt the kernel from the same 6.8.12-1021-tegra tree. Across the
+kernel, OOT, OpenRM and display-kernel packages, `dpkg --verify` finds two changed files besides the
+regenerated `modules.*` indexes: `/boot/Image` and `updates/drivers/bluetooth/realtek/rtk_btusb.ko`. So the
+module files on disk are NVIDIA's, and the vendor kernel loads the ones JetPack uses today. That is
+practical evidence for those modules only. It does not show that every module works with either kernel,
+and `dpkg --verify` checks files on disk, not what is loaded. Both kernels report the same `uname -r`, so
+the boot marker on the drive records `uname -v` to tell them apart.
 
 Embedded configs (`IKCFG_ST`) differ in three lines only:
 
@@ -30,9 +32,26 @@ is not explained by the config; source patches cannot be ruled out.
 Other facts for the no-initramfs entry:
 - The JZAO drive binds to `usb-storage` (bulk-only), not `uas`, even with `uas` loaded, on the A port
   (5000M). The kernel finds it without modules.
-- On JetPack's boot the xHCI firmware is reported at 5.82 s (`Firmware timestamp: 2025-09-08 …, Version 90.05`),
-  before `Run /init` at 5.99 s, so it does not come from the initramfs. The USB drive appeared as `sda` at
-  9.0 s; `rootwait=20` bounds the wait.
+- The xHCI controller's firmware is not read from a file by the kernel. (An earlier version of this note
+  argued this from the log order, `Firmware timestamp` at 5.82 s before `Run /init` at 5.99 s. Codex pointed
+  out that this proves nothing: the kernel unpacks the initramfs before `/init`, and the firmware loader
+  waits for it.) The evidence instead:
+  - JetPack's initrd (`nvidia-l4t-initrd`) does carry `usr/lib/firmware/nvidia/tegra186/xusb.bin` (and a
+    `tegra18x_xusb_firmware` link to it). Its header says it was built on 2020-07-06. The same file,
+    sha256 `42b66946…71f3ac`, is in Arch's `linux-firmware-nvidia` on the drive.
+  - The kernel names four firmware files in its strings: `nvidia/tegra{124,186,194,210}/xusb.bin`. None of
+    them is for Tegra264. The only copies on JetPack's disk are the 2020 builds; `tegra194` is from
+    2020-09-11.
+  - The running controller reports `Firmware timestamp: 2025-09-08 05:45:00 UTC, Version: 90.05 release`.
+    No file on disk or in the initrd has that build, so the boot firmware (which itself boots from USB)
+    loaded it, and the kernel read the running firmware's header.
+  - `CONFIG_EXTRA_FIRMWARE=""` (nothing is built in), `CONFIG_DEVTMPFS_MOUNT=y` (needed without an initramfs).
+- The USB drive appeared as `sda` at 9.0 s. `rootwait=20` bounds only the wait for the root device, not
+  driver probing before it.
+- UEFI variable writes by the kernel: `CONFIG_EFI_VARS_PSTORE` is not set in either config (the three-line
+  diff above covers everything else), so panic logs cannot go to UEFI variables.
+  `CONFIG_EFI_CAPSULE_LOADER=y` provides `/dev/efi_capsule_loader`; nothing on the drive uses it (capsule
+  tools and fwupd are prohibited), and the drive's own fstab mounts efivarfs read-only.
 - `/etc/firmware` (in the command line as `firmware_class.path`) does not exist on JetPack or on the drive;
   the kernel falls back to `/usr/lib/firmware`.
 

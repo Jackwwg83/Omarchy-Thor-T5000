@@ -145,3 +145,38 @@ no new blockers. The drive is written from JetPack; its first boot happens with 
 Still open (accepted for writing the drive, to be covered by the attended first boot): `/proc/sys` is shared
 with the host kernel in the chroot; the hardware watchdog is configured but unproven; unmount failures in
 cleanup are ignored (the namespace teardown releases them).
+
+## 2026-09-25 — Slice 1b boot configuration (consult point 4, before the first Arch boot)
+
+Codex reviewed the Arch boot entries, the rendered `grub.cfg`, the kernel provenance note and both installers
+([raw](reviews/2026-09-25-codex-boot1b-review.md)). Verdict: "不建议执行", with four minimal changes. Claude
+agrees with every finding. One of its inferences was checked against new evidence rather than adopted as is
+(item 5). There is no disagreement to escalate.
+
+| Finding | Decision |
+| --- | --- |
+| `install` let grub-install write `EFI/BOOT/BOOTAA64.EFI` and renamed it afterwards: an interrupted install could leave a bootable, half-written ESP | grub-install writes into `raytone-staging/` below the ESP root, which the firmware never scans. `install` unpublishes a published drive first and refuses to finish if the firmware path exists. Tests cover a failed grub-install and an install over a published drive |
+| The initramfs fallback entry can stop at mkinitcpio's emergency shell (no panic, no systemd units yet) | Entry removed. The image stays on the drive, unused |
+| "The xHCI firmware is ready before `/init`, so it does not come from the initramfs" does not follow | Correct. Checked instead: JetPack's initrd carries only 2020 builds of `xusb.bin`, and the running controller reports a 2025-09-08 build that no file on disk has, so the boot firmware loads it. `CONFIG_EXTRA_FIRMWARE` is empty and `DEVTMPFS_MOUNT=y`. Booting without an initramfs is still the plan, as an attended experiment ([kernel-provenance.md](evidence/slice1b/kernel-provenance.md)) |
+| UEFI variable writes were ruled out only for the install chroot | `CONFIG_EFI_VARS_PSTORE` is not set in either kernel. The drive's fstab mounts efivarfs read-only (applied by systemd-remount-fs), so the running system cannot write variables |
+| Without an initramfs, `rw` skips `systemd-fsck-root` | Arch entries boot `ro`. fstab remounts the root read-write after the check |
+| GPT auto-discovery on the first boots | `systemd.gpt_auto=0` on the Arch entries |
+| A normal reboot that stalls, and PID 1 hangs, are not covered | `reboot.target` is forced after 5 minutes. The watchdog and the dead-man fallback get tested once with someone present (below). Automatic recovery from every failure is not promised |
+| Thermal guard: a single check, run after an unbounded `nvpmodel -q`, and ordered after the services it watches | Separate script with behavioural tests. Checks every 30 s and decides before logging. Diagnostics have timeouts. Logs the fan tach. No ordering on the watched units. `Restart=on-failure` |
+| Vendor-kernel compatibility was overstated; both kernels report the same `uname -r` | The note is corrected. The boot marker records `uname -v`. A boot with the vendor kernel counts as its own experiment, not as a pass for NVIDIA's kernel |
+| Comparing FDTs "excluding /chosen" hides meaningful differences | Keep both raw FDTs. Normalise only known dynamic fields, and review `/chosen` separately |
+
+Attended procedure (owner present, able to unplug the drive or cut power):
+1. Re-run `install-thor-root.sh` (brings pkgrel 2 and the changes above), then `install-thor-boot.sh install` (staged).
+2. `publish`, reboot, and check the default returns to JetPack: `/proc/cmdline`, `efibootmgr -v` and `nvbootctrl dump-slots-info` unchanged.
+3. `arm-once jetpack-grub`, reboot. Save `/sys/firmware/fdt` and `/proc/cmdline`, then compare with the L4TLauncher boot as above.
+4. `arm-once raytone-arch`, reboot, SSH in. Record:
+   - `uname -r`, `uname -v`, the sha256 of the kernel
+   - `/proc/cmdline`, `findmnt`, `swapon --show`
+   - `lsmod`, and `dmesg` lines about symbol, version or firmware errors
+   - `modinfo -n nvidia nvidia_drm`, `nvidia-smi`, `nvpmodel -q`
+   - fan rpm, temperatures, `/var/lib/raytone/thermal.log`
+   - watchdog: `/dev/watchdog*`, `systemctl show -p RuntimeWatchdogUSec`
+   - efivarfs mounted `ro`
+5. Test the dead-man once: create no `/run/raytone-keep` and let it reboot the machine at 20 minutes. It should come back to JetPack. After that, a later boot creates the keep file.
+6. Only if 4 fails: `arm-once raytone-arch-jetpack-kernel`.

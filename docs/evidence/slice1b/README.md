@@ -11,7 +11,7 @@ Root: `/dev/sda2`, PARTUUID `ca5a56c6-4a4b-4e02-8183-ff166514ae3b`. Rootfs tarba
 | --- | --- | --- |
 | Rootfs unpacked, keyring initialised, `linux-aarch64` removed, system upgraded | deployed path | `install-root.log` |
 | `raytone-thor-{linux,firmware,core}` installed from local packages | deployed path | `installed-packages.txt` (195 packages) |
-| Kernel `/boot/vmlinuz-raytone-thor-linux`, fallback initramfs, modules for `6.8.12-1021-tegra` | deployed path | `boot-listing.txt`, `usb-root-inspect.txt` |
+| Kernel `/boot/vmlinuz-raytone-thor-linux`, modules for `6.8.12-1021-tegra` (an initramfs is built too; no boot entry uses it) | deployed path | `boot-listing.txt`, `usb-root-inspect.txt` |
 | depmod picks OpenRM from `updates/opensource-gpu-disp` | deployed path | `usb-root-inspect.txt` |
 | nvpmodel and nvfancontrol linked to the P3834-0008 / P4071-0000 board files | deployed path | `usb-root-inspect.txt` |
 | Loader path limited to `/usr/lib/raytone-l4t` (NVIDIA-named libraries only) | deployed path | `usb-root-inspect.txt` |
