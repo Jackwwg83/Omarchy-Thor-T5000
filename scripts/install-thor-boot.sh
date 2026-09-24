@@ -54,6 +54,8 @@ ESP_MNT=${RAYTONE_ESP_MOUNT:-$tools$BOOT}   # the same mount, from the host
 ESP_DEV=${dev}1
 LOADER=EFI/BOOT/BOOTAA64.EFI
 STAGING=raytone-staging                     # grub-install's --efi-directory, below the ESP root
+# The core image's embedded prefix: the menu on partition 1 (the ESP) of the disk GRUB booted from.
+PREFIX='(,gpt1)/boot/grub'
 # Modules the generated menu needs beyond GRUB's core image.
 MODULES=(normal part_gpt fat ext2 search_fs_uuid chain linux loadenv reboot sleep echo test)
 
@@ -98,6 +100,7 @@ for n in null zero urandom "$dev" "$ESP_DEV"; do
 done
 in_tools() { chroot "$tools" /usr/bin/env -i PATH=/usr/bin LANG=C.UTF-8 "$@"; }
 size_of() { stat -c %s "$1" 2>/dev/null || stat -f %z "$1"; }
+check_prefix() { grep -aqF "$PREFIX" "$1" || die "$(basename "$1") does not embed the prefix $PREFIX"; }
 
 case $cmd in
   install)
@@ -111,6 +114,7 @@ case $cmd in
     in_tools grub-install --target=arm64-efi "--efi-directory=$BOOT/$STAGING" "--boot-directory=$BOOT/boot" \
       --removable --no-nvram || die "grub-install failed; the drive is still not bootable"
     [[ -f $ESP_MNT/$STAGING/$LOADER ]] || die "$STAGING/$LOADER missing after grub-install"
+    check_prefix "$ESP_MNT/$STAGING/$LOADER"
     mkdir -p "$ESP_MNT/EFI/BOOT"
     mv -f "$ESP_MNT/$STAGING/$LOADER" "$ESP_MNT/$LOADER.staged"
     rm -rf "${ESP_MNT:?}/$STAGING"
@@ -124,6 +128,7 @@ case $cmd in
     ;;
   publish)
     [[ -f $ESP_MNT/$LOADER.staged ]] || die "nothing staged: $LOADER.staged is missing (run install)"
+    check_prefix "$ESP_MNT/$LOADER.staged"
     in_tools grub-script-check "$BOOT/boot/grub/grub.cfg" || die "grub-script-check rejects boot/grub/grub.cfg"
     [[ $(size_of "$ESP_MNT/boot/grub/grubenv") == 1024 ]] || die "grubenv is not a 1024-byte environment block"
     for m in "${MODULES[@]}"; do
