@@ -123,3 +123,25 @@ against running it unattended. Claude agrees; there is no disagreement to escala
 Overnight, work continues on everything that needs no reboot: the fixes above (test-first), formatting
 the drive, staging GRUB, repackaging L4T and installing the Arch root on the drive. Publishing the ESP
 and the reboot tests (default path first, then the one-shot, then Arch) wait for an observer.
+
+## 2026-09-24 — Slice 1b root installer (consult point 5: NVIDIA services)
+
+Codex reviewed `install-thor-root.sh` twice ([first](reviews/2026-09-24-codex-root-review.md),
+[second](reviews/2026-09-24-codex-root-review2.md)); the second verdict was "可以执行 (写入 U 盘)" with
+no new blockers. The drive is written from JetPack; its first boot happens with the owner present.
+
+| Finding | Change |
+| --- | --- |
+| Hooks in the chroot could see host processes through a host-PID `/proc` | Mount + PID namespaces; `sys_admin`, `sys_ptrace`, `mknod`, `kill` also dropped |
+| `.sig` files could be taken for packages | Excluded |
+| Login and network checked only after the drive was changed | `authorized_keys`, the password hash and an active NetworkManager profile are required before anything is written |
+| All NetworkManager profiles copied | Only the host's active, file-backed profiles |
+| A partial unpack would be reused | `.raytone-unpacked` marker; an Arch root without it is refused |
+| No proof the result boots | Kernel in `/boot`, modules index, board config links, each unit enabled (one at a time), sudoers parse, `sshd -t`, SSH host keys |
+| Fan or power service failure would go unnoticed until the dead-man timer | Thermal guard 90 s after start: reboots (back to JetPack) if nvfancontrol is not active, no thermal zone reads, or any zone is at 95 °C |
+| Dead-man and boot marker depended on normal start-up | Both start from `sysinit.target` without default dependencies |
+| Password hash exposure | xtrace off before it is read; passed on stdin only |
+
+Still open (accepted for writing the drive, to be covered by the attended first boot): `/proc/sys` is shared
+with the host kernel in the chroot; the hardware watchdog is configured but unproven; unmount failures in
+cleanup are ignored (the namespace teardown releases them).
