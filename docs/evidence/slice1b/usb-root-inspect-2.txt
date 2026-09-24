@@ -1,0 +1,36 @@
+## raytone packages
+raytone-thor-linux 6.8.12.l4t39.2.1-2
+raytone-thor-firmware 39.2.1-2
+raytone-thor-core 39.2.1-2
+## fstab
+# RaytoneOS Thor USB drive
+PARTUUID=ca5a56c6-4a4b-4e02-8183-ff166514ae3b / ext4 defaults,noatime 0 1
+# No UEFI variable writes from this system (systemd-remount-fs applies the options).
+efivarfs /sys/firmware/efi/efivars efivarfs ro,nosuid,nodev,noexec 0 0
+## vconsole.conf
+KEYMAP=us
+## machine-id
+format ok: yes, differs from JetPack: yes
+## reboot.target drop-in
+[Unit]
+JobTimeoutSec=5min
+JobTimeoutAction=reboot-force
+## thermal guard unit
+[Unit]
+Description=RaytoneOS bring-up: reboot if fan control stops or the SoC runs hot
+
+[Service]
+ExecStart=/usr/lib/raytone/thermal-guard
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+## thermal guard script sha256
+455d12a149bf134a88be505729282ba7988d6512a3b1eac51299af7b4844d886
+## licenses
+raytone-thor-core
+raytone-thor-firmware
+raytone-thor-linux
+nvidia-l4t-display-kernel.copyright
+nvidia-l4t-display-kernel.LICENSE.display_kernel.gz
+nvidia-l4t-kernel.copyright
