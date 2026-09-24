@@ -31,7 +31,7 @@ inside_prepare() {
     in_root bash -c "rm -rf /usr/local/src/kmscube && git clone --depth 1 $KMSCUBE_REPO /usr/local/src/kmscube &&
       cd /usr/local/src/kmscube && meson setup build --prefix=/usr/local && ninja -C build install"
   fi
-  # Session programs look up their user; give uid 1000 a name inside the probe root only.
+  # Session programs look up their user; the Arch Linux ARM rootfs already names uid 1000 "alarm".
   in_root bash -c 'getent passwd 1000 >/dev/null || useradd -u 1000 -M -d /tmp/home -s /bin/bash probe'
   in_root bash -c 'git -C /usr/local/src/kmscube rev-parse HEAD' > "$EVID/kmscube-commit.txt"
   in_root bash -c '/usr/local/bin/kmscube --help 2>&1 | head -30' > "$EVID/kmscube-help.txt" || true
@@ -80,29 +80,42 @@ inside_run() {
   sha256sum "$L4T_NV/libnvidia-egl-wayland.so.1" "$ROOT$ARCH_EGL_WAYLAND" "$L4T_NV/libnvidia-egl-gbm.so.1" \
     > "$EVID/glue-hashes.txt" 2>&1 || true
 
-  # 1. Bare KMS: atomic modeset and page flips from GBM buffers, no compositor.
+  # 1. Bare KMS: atomic modeset with fencing, 600 frames. Each frame waits for the previous flip,
+  # so the run time should match the refresh rate (74.97 Hz preferred mode: about 8 s).
+  # -N: kmscube otherwise polls stdin every frame and quits on the first readable byte; under
+  # systemd stdin is /dev/null, which is always readable, so it stopped after one frame.
   rc=0
-  as_user 20 "$EVID/kmscube.txt" __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS="${GLUE_DIR[l4t]}" \
-    /usr/local/bin/kmscube -A -D "$card" &
-  local kms_pid=$! alive=0 scan
-  # Without an observer, the kernel's view is the evidence: active CRTC, mode, and a changing FB_ID.
-  sleep 4
-  as_user 5 "$EVID/kmscube-drm-1.txt" drm_info "$card" || true
-  sleep 1
-  as_user 5 "$EVID/kmscube-drm-2.txt" drm_info "$card" || true
+  local t0 t1 elapsed alive=0 scan i samples=()
+  t0=$(date +%s.%N)
+  as_user 40 "$EVID/kmscube.txt" __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS="${GLUE_DIR[l4t]}" \
+    /usr/local/bin/kmscube -A -N -c 600 -D "$card" &
+  local kms_pid=$!
+  # Without an observer, the kernel's view is the evidence: active CRTC, mode, framebuffers in rotation.
+  sleep 3
+  for i in 1 2 3 4 5 6; do
+    as_user 3 "$EVID/kmscube-drm-$i.txt" drm_info "$card" || true
+    samples+=("$EVID/kmscube-drm-$i.txt")
+    sleep 0.2
+  done
   kill -0 "$kms_pid" 2>/dev/null && alive=1
   wait "$kms_pid" || rc=$?
-  scan=$(python3 "$(dirname "$SCRIPT_0B")/drm_scanout.py" "$EVID/kmscube-drm-1.txt" "$EVID/kmscube-drm-2.txt" --require-flip \
-         | tee "$EVID/kmscube-scanout.txt" | tail -1)
-  if [[ $rc == 124 && $alive == 1 && $scan == "SCANOUT PASS" ]]; then
-    result kmscube "kernel shows the HDMI CRTC active at 2560x1440 and flipping while kmscube ran (kmscube-scanout.txt)"
+  t1=$(date +%s.%N)
+  elapsed=$(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.2f", b - a }')
+  scan=$(python3 "$(dirname "$SCRIPT_0B")/drm_scanout.py" "${samples[@]}" --require-flip |
+         tee "$EVID/kmscube-scanout.txt" | tail -1) || true
+  echo "600 frames in ${elapsed}s (exit $rc)" >> "$EVID/kmscube-scanout.txt"
+  if [[ $rc == 0 && $alive == 1 && $scan == "SCANOUT PASS" ]] &&
+     awk -v e="$elapsed" 'BEGIN { exit !(e >= 7 && e <= 14) }'; then
+    result kmscube "600 atomic frames in ${elapsed}s (paced by the display), HDMI CRTC active at 2560x1440, framebuffers rotating"
   else
-    result kmscube "FAIL exit $rc, alive during sampling: $alive, $scan"; failed=1
+    result kmscube "FAIL exit $rc, alive while sampled: $alive, 600 frames in ${elapsed}s, $scan"; failed=1
   fi
   kill_round
 
   # 2. Hyprland rounds: same egl-gbm, egl-wayland from L4T (with a manual window) then from Arch.
-  local glue manual t home xdg seatd_pid ready
+  local glue manual t home xdg seatd_pid ready session_user
+  session_user=$(chroot "$ROOT" getent passwd 1000 | cut -d: -f1)
+  result session-user "uid 1000 is '$session_user' in the probe root"
   for glue in l4t arch; do
     manual=0 t=240
     [[ $glue == l4t && ${RAYTONE_MANUAL:-0} == 1 ]] && manual=1 t=330
@@ -113,7 +126,7 @@ inside_run() {
     mkfifo "$ROOT/tmp/seatd-ready"
     exec 4<>"$ROOT/tmp/seatd-ready"
     setpriv --bounding-set -sys_module,-sys_rawio,-bpf,-perfmon,-sys_boot,-sys_time -- \
-      chroot "$ROOT" /usr/bin/seatd -u probe -l info -n 3 3>"$ROOT/tmp/seatd-ready" > "$EVID/seatd-$glue.txt" 2>&1 &
+      chroot "$ROOT" /usr/bin/seatd -u "$session_user" -l info -n 3 3>"$ROOT/tmp/seatd-ready" > "$EVID/seatd-$glue.txt" 2>&1 &
     seatd_pid=$!
     ready=0
     read -r -t 10 -u 4 _ && ready=1
@@ -130,8 +143,8 @@ inside_run() {
     cp "$ROOT$xdg"/hypr/*/hyprland.log "$EVID/hyprland-$glue.log" 2>/dev/null || true
     local sess=$EVID/session/hypr-$glue required_fail
     required_fail=$(cat "$sess/required-failures" 2>/dev/null || echo missing)
-    scan=$(python3 "$(dirname "$SCRIPT_0B")/drm_scanout.py" "$sess/drm-state-1.txt" "$sess/drm-state-2.txt" \
-           2>&1 | tee "$EVID/hyprland-$glue-scanout.txt" | tail -1)
+    scan=$(python3 "$(dirname "$SCRIPT_0B")/drm_scanout.py" "$sess"/drm-state-*.txt \
+           2>&1 | tee "$EVID/hyprland-$glue-scanout.txt" | tail -1) || true
     if [[ $rc -eq 0 && -f $sess/done && $required_fail == 0 && $scan == "SCANOUT PASS" ]]; then
       result "hyprland-$glue" "client tests passed, kernel shows Hyprland's framebuffer on the HDMI CRTC at 2560x1440, session exited cleanly"
     else
@@ -189,7 +202,7 @@ host_run() {
   apt-mark showhold | sort > "$EVID/apt-holds-before.txt"
   local hold=()
   mapfile -t hold < <(dpkg-query -W -f='${db:Status-Abbrev}\t${Package}\n' 'nvidia-l4t-bootloader' 'nvidia-l4t-kernel*' |
-                      awk -F'\t' '$1 ~ /^ii/ {print $2}')
+                      awk -F'\t' '$1 ~ /^.i/ {print $2}')
   apt-mark hold "${hold[@]}"
   apt-mark showhold | sort | comm -13 "$EVID/apt-holds-before.txt" - > "$EVID/apt-holds-added.txt"
   result apt-hold "$(wc -l < "$EVID/apt-holds-added.txt") packages newly held (apt-holds-added.txt)"

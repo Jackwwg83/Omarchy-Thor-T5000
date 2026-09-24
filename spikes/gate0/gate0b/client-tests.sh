@@ -53,9 +53,7 @@ t screenshot-1.log 15 grim "$E/screenshot-1.png"
 require "screenshot-1 is a PNG" png_ok "$E/screenshot-1.png"
 t clients.json 10 hyprctl clients -j
 # Kernel view of the scanout while the compositor runs: active CRTC, mode, FB_ID changing between reads.
-t drm-state-1.txt 10 drm_info "$AQ_DRM_DEVICES"
-sleep 1
-t drm-state-2.txt 10 drm_info "$AQ_DRM_DEVICES"
+for i in 1 2 3; do t "drm-state-$i.txt" 10 drm_info "$AQ_DRM_DEVICES"; sleep 0.3; done
 libs_of hyprland "$(pidof -s Hyprland)"
 libs_of quickshell "$(pgrep -n -x quickshell)"
 libs_of chromium-gpu "$(pgrep -n -f -- '--type=gpu-process')"
@@ -69,7 +67,6 @@ t dpms-on.txt 10 hyprctl dispatch 'hl.dsp.dpms({ action = "on" })' || on=$?
 sleep 4
 info "dpms dispatch off/on exit $off/$on"
 info "wayland syncobj global advertised: $(grep -c linux_drm_syncobj "$E/wayland-info.txt")"
-info "first FB_ID line changed between drm samples: $([[ $(grep -m1 '"FB_ID"' "$E/drm-state-1.txt") != $(grep -m1 '"FB_ID"' "$E/drm-state-2.txt") ]] && echo yes || echo no)"
 t screenshot-2.log 15 grim "$E/screenshot-2.png"
 require "screenshot-2 after DPMS is a PNG" png_ok "$E/screenshot-2.png"
 t monitors-after-dpms.json 10 hyprctl monitors -j

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Judge scanout from two drm_info text dumps of one DRM node (Gate 0b spike).
+"""Judge scanout from drm_info text dumps of one DRM node (Gate 0b spike).
 
-    drm_scanout.py SAMPLE1 SAMPLE2 [--require-flip]
+    drm_scanout.py SAMPLE... [--require-flip]
 
 Follows the connected HDMI connector to its CRTC and that CRTC's primary plane.
-Passes when, in both samples, the CRTC is active, the primary plane shows a
-framebuffer at 2560x1440, and (with --require-flip) the framebuffer ID differs
-between the samples, i.e. the kernel is flipping new frames to the connector.
+Passes when, in every sample, the CRTC is active and the primary plane shows a
+framebuffer at 2560x1440, and (with --require-flip) more than one distinct
+framebuffer ID was seen across the samples, i.e. the kernel is flipping frames.
 """
 import re
 import sys
@@ -50,14 +50,14 @@ def scanout(path):
 
 
 def main(argv):
-    if len(argv) < 3:
+    paths = [a for a in argv[1:] if not a.startswith("--")]
+    if not paths:
         print(__doc__.strip())
         return 2
-    s1, s2 = scanout(argv[1]), scanout(argv[2])
-    print(f"sample 1: {s1}")
-    print(f"sample 2: {s2}")
+    samples = [scanout(p) for p in paths]
     problems = []
-    for n, s in (("1", s1), ("2", s2)):
+    for n, s in enumerate(samples, 1):
+        print(f"sample {n}: {s}")
         if "error" in s:
             problems.append(f"sample {n}: {s['error']}")
             continue
@@ -67,10 +67,10 @@ def main(argv):
             problems.append(f"sample {n}: no framebuffer on the primary plane")
         if (s.get("w"), s.get("h")) != WANT:
             problems.append(f"sample {n}: primary plane is {s.get('w')}x{s.get('h')}, want {WANT[0]}x{WANT[1]}")
-    flipped = s1.get("fb") and s2.get("fb") and s1["fb"] != s2["fb"]
-    if "--require-flip" in argv and not flipped:
-        problems.append("framebuffer did not change between samples")
-    print(f"flipping between samples: {'yes' if flipped else 'no'}")
+    fbs = sorted({s["fb"] for s in samples if s.get("fb")})
+    print(f"distinct framebuffers across samples: {fbs}")
+    if "--require-flip" in argv and len(fbs) < 2:
+        problems.append("only one framebuffer seen across samples")
     for p in problems:
         print(f"PROBLEM {p}")
     print("SCANOUT PASS" if not problems else "SCANOUT FAIL")

@@ -70,9 +70,10 @@ fetch_rootfs() (
 host_facts() {
   local out=$CACHE/l4t-host p m
   mkdir -p "$out/maintscripts" "$out/etc"
-  # -W also lists packages dpkg knows but has not installed (e.g. the nvgpu set); keep installed ones.
+  # -W also lists packages dpkg knows but has not installed (e.g. the nvgpu set); keep installed ones,
+  # held ("hi") or not ("ii").
   dpkg-query -W -f='${db:Status-Abbrev}\t${Package}\t${Version}\n' 'nvidia-l4t-*' |
-    awk -F'\t' '$1 ~ /^ii/ {print $2 "\t" $3}' > "$out/packages.tsv"
+    awk -F'\t' '$1 ~ /^.i/ {print $2 "\t" $3}' > "$out/packages.tsv"
   local pkgs=()
   mapfile -t pkgs < <(cut -f1 "$out/packages.tsv")
   for p in "${pkgs[@]}"; do dpkg -L "$p" | sed "s|^|$p\t|"; done > "$out/files.tsv"
