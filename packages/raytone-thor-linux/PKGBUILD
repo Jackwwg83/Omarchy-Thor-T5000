@@ -3,7 +3,7 @@
 pkgname=raytone-thor-linux
 _kver=6.8.12-1021-tegra
 pkgver=6.8.12.l4t39.2.1
-pkgrel=1
+pkgrel=2
 pkgdesc='NVIDIA L4T R39.2.1 kernel with out-of-tree, OpenRM and display modules for Jetson AGX Thor'
 arch=(aarch64)
 url='https://developer.nvidia.com/embedded/jetson-linux'

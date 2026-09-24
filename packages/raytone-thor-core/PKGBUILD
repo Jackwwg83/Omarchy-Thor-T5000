@@ -2,7 +2,7 @@
 # units, power model, fan control, tools, NVML (nvidia-smi) and NvSci.
 pkgname=raytone-thor-core
 pkgver=39.2.1
-pkgrel=1
+pkgrel=2
 pkgdesc='NVIDIA L4T R39.2.1 base userspace, power and fan control for Jetson AGX Thor'
 arch=(aarch64)
 url='https://developer.nvidia.com/embedded/jetson-linux'

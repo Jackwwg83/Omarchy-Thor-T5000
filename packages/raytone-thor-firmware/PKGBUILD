@@ -1,7 +1,7 @@
 # RaytoneOS: NVIDIA L4T R39.2.1 firmware for Jetson AGX Thor (GPU system processor, display, engines).
 pkgname=raytone-thor-firmware
 pkgver=39.2.1
-pkgrel=1
+pkgrel=2
 pkgdesc='NVIDIA L4T R39.2.1 firmware for Jetson AGX Thor'
 arch=(aarch64)
 url='https://developer.nvidia.com/embedded/jetson-linux'
