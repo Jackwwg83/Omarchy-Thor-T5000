@@ -35,6 +35,14 @@ class CmdlineTests(unittest.TestCase):
         self.assertIn("rootwait=20", c)
         self.assertNotIn("rootwait", c)
 
+    def test_read_only_root_replaces_rw(self):
+        c = tb.cmdline(JETPACK, USB_ROOT, read_only=True).split()
+        self.assertIn("ro", c)
+        self.assertNotIn("rw", c)
+        self.assertEqual(c.index("ro"), 1)  # where JetPack had rw, right after root=
+        self.assertEqual(tb.cmdline("quiet", USB_ROOT, read_only=True).split(), [f"root=PARTUUID={USB_ROOT}", "ro", "quiet", "panic=10"])
+        self.assertIn("rw", tb.cmdline(JETPACK, USB_ROOT).split())
+
     def test_extra_arguments_are_appended(self):
         self.assertTrue(tb.cmdline(JETPACK, USB_ROOT, extra=["rd.emergency=reboot"]).endswith("rd.emergency=reboot"))
 

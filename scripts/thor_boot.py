@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Boot configuration for the Thor USB drive: kernel command line and a one-shot grub.cfg.
 
-    thor_boot.py cmdline --proc-cmdline FILE --root-partuuid UUID [--extra ARG ...]
+    thor_boot.py cmdline --proc-cmdline FILE --root-partuuid UUID [--rootwait N] [--read-only] [--extra ARG ...]
     thor_boot.py grub-cfg --entries ENTRIES.json --default ID > grub.cfg
 
 The default is an entry that returns to JetPack (chainloading the NVMe's own boot loader). An entry
@@ -31,17 +31,20 @@ PATH_RE = re.compile(r"^/[A-Za-z0-9._/+-]+$")
 RESERVED_IDS = ("retry-reboot", "uefi-menu")
 
 
-def cmdline(proc_cmdline, root_partuuid, extra=(), rootwait=None):
+def cmdline(proc_cmdline, root_partuuid, extra=(), rootwait=None, read_only=False):
     """JetPack's booted command line with the root swapped, boot-loader profiling dropped, panic=10.
 
     rootwait=N bounds the wait for the root device, so a missing root panics and reboots instead of
-    waiting forever (Linux 6.5 and later)."""
+    waiting forever (Linux 6.5 and later). read_only mounts the root read-only first, for a boot
+    without an initramfs: systemd checks it (systemd-fsck-root) and then remounts it as fstab says."""
     if not PARTUUID_RE.match(root_partuuid or ""):
         raise ValueError(f"not a PARTUUID: {root_partuuid!r}")
     tokens = [t for t in proc_cmdline.split()
               if not t.startswith(("root=", "bl_prof_", "panic="))]
     if rootwait is not None:
         tokens = [f"rootwait={int(rootwait)}" if t == "rootwait" or t.startswith("rootwait=") else t for t in tokens]
+    if read_only:
+        tokens = ["ro"] + [t for t in tokens if t not in ("rw", "ro")]
     tokens = [f"root=PARTUUID={root_partuuid}"] + tokens + ["panic=10"] + list(extra)
     for t in tokens:
         if UNSAFE_RE.search(t):
@@ -153,13 +156,15 @@ def main(argv):
     c.add_argument("--root-partuuid", required=True)
     c.add_argument("--extra", action="append", default=[])
     c.add_argument("--rootwait", type=int)
+    c.add_argument("--read-only", action="store_true")
     g = sub.add_parser("grub-cfg")
     g.add_argument("--entries", required=True, help="JSON list of Entry fields")
     g.add_argument("--default", required=True)
     args = ap.parse_args(argv)
     try:
         if args.cmd == "cmdline":
-            print(cmdline(open(args.proc_cmdline).read(), args.root_partuuid, args.extra, args.rootwait))
+            print(cmdline(open(args.proc_cmdline).read(), args.root_partuuid, args.extra, args.rootwait,
+                          args.read_only))
         else:
             print(grub_cfg([Entry(**e) for e in json.load(open(args.entries))], default=args.default), end="")
     except ValueError as e:

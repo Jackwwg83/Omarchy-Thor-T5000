@@ -22,15 +22,7 @@
     "fs_uuid": "4ae3be9c-9ec7-4507-b6ac-33c46734dfa5",
     "kernel": "/boot/vmlinuz-raytone-thor-linux",
     "initrd": null,
-    "cmdline": "root=PARTUUID=ca5a56c6-4a4b-4e02-8183-ff166514ae3b rw rootwait=20 rootfstype=ext4 mminit_loglevel=4 earlycon=tegra_utc,mmio32,0xc5a0000 console=ttyUTC0,115200 firmware_class.path=/etc/firmware fbcon=map:0 efi=runtime audit=1 audit_backlog_limit=8192 swiotlb=2048 video=efifb:off console=tty0 panic=10"
-  },
-  {
-    "id": "raytone-arch-initramfs",
-    "title": "Slice 1b fallback: RaytoneOS with its initramfs",
-    "fs_uuid": "4ae3be9c-9ec7-4507-b6ac-33c46734dfa5",
-    "kernel": "/boot/vmlinuz-raytone-thor-linux",
-    "initrd": "/boot/initramfs-raytone-thor-linux.img",
-    "cmdline": "root=PARTUUID=ca5a56c6-4a4b-4e02-8183-ff166514ae3b rw rootwait=20 rootfstype=ext4 mminit_loglevel=4 earlycon=tegra_utc,mmio32,0xc5a0000 console=ttyUTC0,115200 firmware_class.path=/etc/firmware fbcon=map:0 efi=runtime audit=1 audit_backlog_limit=8192 swiotlb=2048 video=efifb:off console=tty0 panic=10"
+    "cmdline": "root=PARTUUID=ca5a56c6-4a4b-4e02-8183-ff166514ae3b ro rootwait=20 rootfstype=ext4 mminit_loglevel=4 earlycon=tegra_utc,mmio32,0xc5a0000 console=ttyUTC0,115200 firmware_class.path=/etc/firmware fbcon=map:0 efi=runtime audit=1 audit_backlog_limit=8192 swiotlb=2048 video=efifb:off console=tty0 panic=10 systemd.gpt_auto=0"
   },
   {
     "id": "raytone-arch-jetpack-kernel",
@@ -38,6 +30,6 @@
     "fs_uuid": "51cac00d-1733-4097-a9dc-82f35a4a1c8f",
     "kernel": "/boot/Image",
     "initrd": null,
-    "cmdline": "root=PARTUUID=ca5a56c6-4a4b-4e02-8183-ff166514ae3b rw rootwait=20 rootfstype=ext4 mminit_loglevel=4 earlycon=tegra_utc,mmio32,0xc5a0000 console=ttyUTC0,115200 firmware_class.path=/etc/firmware fbcon=map:0 efi=runtime audit=1 audit_backlog_limit=8192 swiotlb=2048 video=efifb:off console=tty0 panic=10"
+    "cmdline": "root=PARTUUID=ca5a56c6-4a4b-4e02-8183-ff166514ae3b ro rootwait=20 rootfstype=ext4 mminit_loglevel=4 earlycon=tegra_utc,mmio32,0xc5a0000 console=ttyUTC0,115200 firmware_class.path=/etc/firmware fbcon=map:0 efi=runtime audit=1 audit_backlog_limit=8192 swiotlb=2048 video=efifb:off console=tty0 panic=10 systemd.gpt_auto=0"
   }
 ]
