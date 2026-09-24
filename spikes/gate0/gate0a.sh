@@ -7,12 +7,17 @@
 # privileged part runs in fresh mount and PID namespaces, so its mounts and any
 # leftover processes disappear when it exits. gate0b.sh sources this file for
 # the shared setup functions.
+#
+# Gate 0c: L4T_FROM=pkg ROOT=$WORK/pkg-root runs the same probes in a separate
+# root where NVIDIA's libraries come only from the raytone-thor packages in
+# $WORK/pkgs, registered where a booted system finds them.
 set -euo pipefail
 shopt -s nullglob
 
 SCRIPT=$(readlink -f "${BASH_SOURCE[0]}")
 WORK=${WORK:-$HOME/raytone}
-ROOT=$WORK/probe-root
+ROOT=${ROOT:-$WORK/probe-root}
+L4T_FROM=${L4T_FROM:-host}
 EVID=${EVID:-$WORK/evidence/gate0a}
 CACHE=$WORK/cache
 TARBALL=ArchLinuxARM-aarch64-latest.tar.gz
@@ -41,6 +46,8 @@ DROP_CAPS=-sys_module,-sys_rawio,-sys_admin,-sys_ptrace,-sys_boot,-sys_time,-mkn
 check_work() {
   [[ $WORK == /home/*/* && $(readlink -f "$WORK") == "$WORK" ]] ||
     { echo "WORK must be an absolute path under /home without symlinks: $WORK" >&2; exit 1; }
+  [[ $ROOT == "$WORK"/* && $ROOT != *..* ]] || { echo "ROOT must be under WORK: $ROOT" >&2; exit 1; }
+  [[ $L4T_FROM == host || $L4T_FROM == pkg ]] || { echo "L4T_FROM must be host or pkg" >&2; exit 1; }
   local p
   for p in "$ROOT" "$EVID" "$CACHE"; do
     [[ ! -L $p ]] || { echo "refusing symlinked path $p" >&2; exit 1; }
@@ -98,10 +105,11 @@ in_root() { # run as root inside the probe root with dangerous capabilities drop
 PASS=() FAIL=()
 probe() { # probe NAME CMD... : run as the unprivileged user, output to $EVID/NAME.txt
   local name=$1; shift
-  local rc=0
+  local rc=0 glue=()
+  # From packages, the registrations sit in the default directories, as on a booted system.
+  [[ $L4T_FROM == pkg ]] || glue=(__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS="${GLUE_DIR[$GLUE]}")
   timeout 90 chroot --userspec=1000:1000 --groups=44,993 "$ROOT" \
-    /usr/bin/env -i PATH=/usr/bin HOME=/tmp LANG=C.UTF-8 \
-    __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS="${GLUE_DIR[$GLUE]}" "$@" > "$EVID/$name.txt" 2>&1 || rc=$?
+    /usr/bin/env -i PATH=/usr/bin HOME=/tmp LANG=C.UTF-8 "${glue[@]}" "$@" > "$EVID/$name.txt" 2>&1 || rc=$?
   echo "exit: $rc" >> "$EVID/$name.txt"
   if (( rc == 0 )); then PASS+=("$name"); else FAIL+=("$name (exit $rc)"); fi
 }
@@ -202,6 +210,20 @@ setup_l4t() {
   in_root ldconfig
 }
 
+# Gate 0c: NVIDIA's libraries from the raytone-thor packages only; nothing bound from the host.
+setup_l4t_pkgs() {
+  local p f files=()
+  mkdir -p "$ROOT/var/cache/raytone"
+  for p in linux firmware core graphics; do
+    f=$(compgen -G "$WORK/pkgs/raytone-thor-$p-[0-9]*.pkg.tar.*" | grep -v '\.sig$' | sort -V | tail -1) ||
+      { echo "no raytone-thor-$p package in $WORK/pkgs" >&2; exit 1; }
+    cp "$f" "$ROOT/var/cache/raytone/" && files+=("/var/cache/raytone/$(basename "$f")")
+  done
+  in_root pacman -U --noconfirm --needed "${files[@]}"
+  in_root pacman -Q raytone-thor-linux raytone-thor-firmware raytone-thor-core raytone-thor-graphics > "$EVID/raytone-packages.txt"
+  in_root ldconfig
+}
+
 # GPU and display nodes; udev database read-only, never its control socket.
 add_gpu_nodes() {
   local n
@@ -236,13 +258,20 @@ probes_0a() {
   drv=$(modinfo -F version nvidia)
   probe versions pacman -Q "${PROBE_PKGS[@]}" glibc
   probe ldcache bash -c "ldconfig -p | grep -E 'libvulkan\.|libgbm|libEGL|libGLX|libnvidia-allocator|libcuda\.|libnvidia-egl'"
-  probe ldd bash -c "rc=0; for l in /usr/lib/raytone-l4t/libEGL_nvidia.so.0 /usr/lib/raytone-l4t/libGLX_nvidia.so.0 \
-      /usr/lib/raytone-l4t/libnvidia-allocator.so.1 /usr/lib/raytone-l4t/libnvidia-eglcore.so.$drv \
-      $L4T_NV/libnvidia-egl-gbm.so.1 $L4T_NV/libnvidia-egl-wayland.so.1 \
-      /usr/lib/raytone-l4t/libnvidia-rmapi-tegra.so.$drv /usr/lib/raytone-l4t/libcuda.so.1; do \
+  # From packages there is no L4T egl-wayland (Arch's is used) and CUDA waits for its own package.
+  local libs="/usr/lib/raytone-l4t/libEGL_nvidia.so.0 /usr/lib/raytone-l4t/libGLX_nvidia.so.0
+      /usr/lib/raytone-l4t/libnvidia-allocator.so.1 /usr/lib/raytone-l4t/libnvidia-eglcore.so.$drv
+      $L4T_NV/libnvidia-egl-gbm.so.1 /usr/lib/raytone-l4t/libnvidia-rmapi-tegra.so.$drv" vendor=/etc/glvnd/egl_vendor.d/10_nvidia.json
+  if [[ $L4T_FROM == pkg ]]; then
+    libs+=" $ARCH_EGL_WAYLAND /usr/lib/raytone-l4t/libnvidia-glcore.so.$drv /usr/lib/raytone-l4t/libGLESv2_nvidia.so.2 /usr/lib/gbm/nvidia-drm_gbm.so"
+    vendor=/usr/share/glvnd/egl_vendor.d/10_nvidia.json
+  else
+    libs+=" $L4T_NV/libnvidia-egl-wayland.so.1 /usr/lib/raytone-l4t/libcuda.so.1"
+  fi
+  probe ldd bash -c "rc=0; for l in $(echo $libs); do \
       echo \"== \$l\"; ldd \$l || rc=1; ldd \$l | grep -q 'not found' && rc=1; done; exit \$rc"
   probe drm_info drm_info
-  probe egl_surfaceless env __EGL_VENDOR_LIBRARY_FILENAMES=/etc/glvnd/egl_vendor.d/10_nvidia.json eglinfo -B -p surfaceless
+  probe egl_surfaceless env __EGL_VENDOR_LIBRARY_FILENAMES=$vendor eglinfo -B -p surfaceless
   # eglinfo passes EGL_DEFAULT_DISPLAY for GBM, which NVIDIA's GBM platform rejects; gbmprobe uses a real device.
   probe egl_gbm_default_display eglinfo -B -p gbm
   probe vulkan vulkaninfo --summary
@@ -261,7 +290,7 @@ probes_0a() {
   done
 
   {
-    echo "driver: $drv  glue: $GLUE"
+    echo "driver: $drv  libraries from: $L4T_FROM  glue: $([[ $L4T_FROM == pkg ]] && echo 'package defaults' || echo "$GLUE")"
     echo "pass: ${PASS[*]:-none}"
     echo "fail: ${FAIL[*]:-none}"
     for f in "$EVID"/gbmprobe_*D*.txt "$EVID"/gbmprobe_card*.txt; do echo "$(basename "$f" .txt): $(grep '^RESULT' "$f" || echo 'no result')"; done
@@ -276,14 +305,15 @@ inside() {
   require_namespace
   setup_root
   setup_packages "${PROBE_PKGS[@]}"
-  setup_l4t
+  if [[ $L4T_FROM == pkg ]]; then setup_l4t_pkgs; else setup_l4t; fi
   add_gpu_nodes
   probes_0a
 }
 
 enter_namespace() { # enter_namespace STAGE : rerun this file's STAGE as PID 1 of fresh mount/PID namespaces
   sudo unshare --mount --pid --fork --propagation private -- \
-    env RAYTONE_NS=1 WORK="$WORK" EVID="$EVID" GLUE="$GLUE" PKG_MIRROR="${PKG_MIRROR:-}" bash "$1" "$2"
+    env RAYTONE_NS=1 WORK="$WORK" ROOT="$ROOT" L4T_FROM="$L4T_FROM" EVID="$EVID" GLUE="$GLUE" \
+      PKG_MIRROR="${PKG_MIRROR:-}" bash "$1" "$2"
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
