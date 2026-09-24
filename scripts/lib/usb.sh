@@ -42,6 +42,13 @@ not_in_use() {
 }
 
 
+check_layout() { # the layout make-thor-usb.sh writes
+  local layout
+  layout=$(lsblk --raw -n -o NAME,PARTLABEL,FSTYPE "$dev")
+  grep -qx "${name}1 RAYTONE_ESP vfat" <<< "$layout" || die "$dev partition 1 is not a FAT RAYTONE_ESP (run make-thor-usb.sh)"
+  grep -qx "${name}2 RAYTONE_ROOT ext4" <<< "$layout" || die "$dev partition 2 is not an ext4 RAYTONE_ROOT"
+}
+
 RULES=${RAYTONE_UDEV_RULES:-/run/udev/rules.d}
 automount_rule=''
 

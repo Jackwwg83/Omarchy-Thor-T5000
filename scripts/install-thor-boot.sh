@@ -25,7 +25,7 @@ source "$HERE/lib/usb.sh"
 
 cmd=${1:-}
 shift || true
-disk='' serial='' write=0 confirm='' entries='' entry='' tools='' dev='' name='' default=''
+disk='' serial='' write=0 confirm='' entries='' entry='' tools='' dev='' default=''
 while (($#)); do
   case $1 in
     --disk) disk=${2:-}; shift 2 ;;
@@ -54,13 +54,6 @@ ESP_DEV=${dev}1
 LOADER=EFI/BOOT/BOOTAA64.EFI
 # Modules the generated menu needs beyond GRUB's core image.
 MODULES=(normal part_gpt fat ext2 search_fs_uuid chain linux loadenv reboot sleep echo test)
-
-check_layout() {
-  local layout
-  layout=$(lsblk --raw -n -o NAME,PARTLABEL,FSTYPE "$dev")
-  grep -qx "${name}1 RAYTONE_ESP vfat" <<< "$layout" || die "$dev partition 1 is not a FAT RAYTONE_ESP (run make-thor-usb.sh)"
-  grep -qx "${name}2 RAYTONE_ROOT ext4" <<< "$layout" || die "$dev partition 2 is not an ext4 RAYTONE_ROOT"
-}
 
 if [[ $cmd == install ]]; then
   menu=$(python3 "$HERE/thor_boot.py" grub-cfg --entries "$entries" --default "$default") ||
