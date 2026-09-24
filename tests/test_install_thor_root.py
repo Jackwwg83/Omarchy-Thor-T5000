@@ -35,6 +35,7 @@ STUB = textwrap.dedent("""\
         echo "in-chroot $root $*" >> "$STATE/calls"
         # the unpacked rootfs has the default "alarm" user and no one else
         if [[ $1 == getent && $2 == passwd ]]; then [[ $3 == alarm ]] && exit 0; exit 2; fi
+        if [[ $1 == systemctl && $2 == is-enabled && -f $STATE/disabled-$3 ]]; then exit 1; fi
         if [[ $1 == bsdtar ]]; then mkdir -p "$TARGET/etc" "$TARGET/home/alarm"; echo "Arch Linux ARM" > "$TARGET/etc/arch-release"; fi
         if [[ $1 == pacman && $2 == -U ]]; then
           k=$TARGET/usr/lib/modules/6.8.12-1021-tegra
@@ -239,6 +240,18 @@ class InstallThorRootTests(unittest.TestCase):
         enable = " ".join(c for c in self.chroot_calls() if c.startswith("systemctl enable"))
         self.assertIn("raytone-thermal-guard", enable)
         self.assertIn("raytone-boot-start", enable)
+
+    def test_every_unit_is_checked_for_enablement(self):
+        (self.state / "disabled-nvpower").touch()
+        r = self.run_script("--write", "--confirm-serial", SERIAL)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("nvpower", r.stderr)
+
+    def test_thermal_guard_fails_when_no_sensor_reads(self):
+        self.write()
+        guard = (self.target / "usr/lib/raytone/thermal-guard").read_text()
+        self.assertIn("read=0", guard)
+        self.assertIn('[ "$read" -eq 0 ]', guard)
 
     def test_units_enabled(self):
         self.write()

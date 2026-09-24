@@ -243,13 +243,15 @@ cat > "$MNT/usr/lib/raytone/thermal-guard" <<'EOF'
 sleep 90
 log=/var/lib/raytone/thermal.log
 max=0
+read=0
 for z in /sys/class/thermal/thermal_zone*/temp; do
   t=$(cat "$z" 2>/dev/null) || continue
+  read=$((read + 1))
   [ "$t" -gt "$max" ] && max=$t
 done
 state=$(systemctl is-active nvfancontrol)
-echo "$(date -Is) nvfancontrol=$state max_mC=$max $(nvpmodel -q 2>/dev/null | tr '\n' ' ')" >> "$log"
-if [ "$state" != active ] || [ "$max" -ge 95000 ]; then
+echo "$(date -Is) nvfancontrol=$state zones_read=$read max_mC=$max $(nvpmodel -q 2>/dev/null | tr '\n' ' ')" >> "$log"
+if [ "$state" != active ] || [ "$read" -eq 0 ] || [ "$max" -ge 95000 ]; then
   echo "$(date -Is) thermal guard: rebooting" >> "$log"
   systemctl reboot
 fi
@@ -309,7 +311,9 @@ in_target ssh-keygen -A
 [[ -f $MNT/usr/lib/modules/$KVER/modules.dep ]] || die "no modules index for $KVER"
 in_target test -e /etc/nvpmodel.conf || die "/etc/nvpmodel.conf does not resolve on the drive"
 in_target test -e /etc/nvfancontrol.conf || die "/etc/nvfancontrol.conf does not resolve on the drive"
-in_target systemctl is-enabled "${UNITS[@]}" > /dev/null || die "not every unit is enabled"
+for u in "${UNITS[@]}"; do   # one at a time: is-enabled succeeds if any one of several is enabled
+  in_target systemctl is-enabled "$u" > /dev/null || die "unit not enabled: $u"
+done
 in_target visudo -cf /etc/sudoers.d/10-wheel > /dev/null || die "sudoers 10-wheel does not parse"
 in_target visudo -cf /etc/sudoers.d/raytone-temp > /dev/null || die "sudoers raytone-temp does not parse"
 in_target sshd -t || die "sshd configuration does not validate"
