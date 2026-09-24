@@ -80,15 +80,14 @@ inside_run() {
   sha256sum "$L4T_NV/libnvidia-egl-wayland.so.1" "$ROOT$ARCH_EGL_WAYLAND" "$L4T_NV/libnvidia-egl-gbm.so.1" \
     > "$EVID/glue-hashes.txt" 2>&1 || true
 
-  # 1. Bare KMS: atomic modeset with fencing, 600 frames. Each frame waits for the previous flip,
-  # so the run time should match the refresh rate (74.97 Hz preferred mode: about 8 s).
-  # -N: kmscube otherwise polls stdin every frame and quits on the first readable byte; under
-  # systemd stdin is /dev/null, which is always readable, so it stopped after one frame.
+  # 1. Bare KMS, legacy page flips: kmscube waits for each flip event, so 600 frames should take
+  # about 8 s at the 74.97 Hz preferred mode. -N: kmscube otherwise polls stdin every frame and quits
+  # on the first readable byte; under systemd stdin is /dev/null, always readable.
   rc=0
   local t0 t1 elapsed alive=0 scan i samples=()
   t0=$(date +%s.%N)
   as_user 40 "$EVID/kmscube.txt" __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS="${GLUE_DIR[l4t]}" \
-    /usr/local/bin/kmscube -A -N -c 600 -D "$card" &
+    /usr/local/bin/kmscube -N -c 600 -D "$card" &
   local kms_pid=$!
   # Without an observer, the kernel's view is the evidence: active CRTC, mode, framebuffers in rotation.
   sleep 3
@@ -106,10 +105,16 @@ inside_run() {
   echo "600 frames in ${elapsed}s (exit $rc)" >> "$EVID/kmscube-scanout.txt"
   if [[ $rc == 0 && $alive == 1 && $scan == "SCANOUT PASS" ]] &&
      awk -v e="$elapsed" 'BEGIN { exit !(e >= 7 && e <= 14) }'; then
-    result kmscube "600 atomic frames in ${elapsed}s (paced by the display), HDMI CRTC active at 2560x1440, framebuffers rotating"
+    result kmscube "600 page-flipped frames in ${elapsed}s (paced by the display), HDMI CRTC active at 2560x1440, framebuffers rotating"
   else
     result kmscube "FAIL exit $rc, alive while sampled: $alive, 600 frames in ${elapsed}s, $scan"; failed=1
   fi
+  kill_round
+  # Atomic with fences, informational: kmscube imports the KMS out-fence into EGL, which failed before.
+  rc=0
+  as_user 20 "$EVID/kmscube-atomic.txt" __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS="${GLUE_DIR[l4t]}" \
+    /usr/local/bin/kmscube -A -N -c 300 -D "$card" || rc=$?
+  result kmscube-atomic-informational "exit $rc: $(grep -m1 -E 'Assertion|failed' "$EVID/kmscube-atomic.txt" || echo 'no error printed')"
   kill_round
 
   # 2. Hyprland rounds: same egl-gbm, egl-wayland from L4T (with a manual window) then from Arch.
@@ -141,6 +146,7 @@ inside_run() {
       Hyprland --config /tmp/raytone-0b/hyprland.lua || rc=$?
     echo "active VT after $glue: $(cat /sys/class/tty/tty0/active)" >> "$EVID/vt.txt"
     cp "$ROOT$xdg"/hypr/*/hyprland.log "$EVID/hyprland-$glue.log" 2>/dev/null || true
+    cp -r "$ROOT$home/.cache/hyprland" "$EVID/hyprland-$glue-crash" 2>/dev/null || true
     local sess=$EVID/session/hypr-$glue required_fail
     required_fail=$(cat "$sess/required-failures" 2>/dev/null || echo missing)
     scan=$(python3 "$(dirname "$SCRIPT_0B")/drm_scanout.py" "$sess"/drm-state-*.txt \

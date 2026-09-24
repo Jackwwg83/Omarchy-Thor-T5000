@@ -1,0 +1,97 @@
+diff --git a/src/protocols/LinuxDMABUF.cpp b/src/protocols/LinuxDMABUF.cpp
+index 897c98d..4b97ae2 100644
+--- a/src/protocols/LinuxDMABUF.cpp
++++ b/src/protocols/LinuxDMABUF.cpp
+@@ -453,6 +453,18 @@ CLinuxDMABufV1Protocol::CLinuxDMABufV1Protocol(const wl_interface* iface, const
+ 
+         m_mainDevice = *dev;
+ 
++        // On split display/GPU devices (NVIDIA Jetson Thor) the compositor's render node belongs to the
++        // display device, which clients cannot render with; advertise the EGL device's render node instead.
++        auto eglNode = g_pHyprOpenGL ? g_pHyprOpenGL->eglDeviceRenderNode() : std::nullopt;
++        if (eglNode) {
++            struct stat st;
++            if (stat(eglNode->c_str(), &st) == 0 && S_ISCHR(st.st_mode) && st.st_rdev != m_mainDevice) {
++                LOGM(Log::DEBUG, "Advertising the EGL device render node {} as the main device", *eglNode);
++                m_mainDevice = st.st_rdev;
++            } else
++                eglNode.reset();
++        }
++
+         SDMABUFTranche eglTranche = {
+             .device  = m_mainDevice,
+             .flags   = 0, // renderer isn't for ds so don't set flag.
+@@ -508,6 +520,16 @@ CLinuxDMABufV1Protocol::CLinuxDMABufV1Protocol(const wl_interface* iface, const
+             return;
+         }
+ 
++        if (eglNode) {
++            drmFreeDevice(&device);
++            m_mainDeviceFD = CFileDescriptor{open(eglNode->c_str(), O_RDWR | O_CLOEXEC)};
++            if (!m_mainDeviceFD.isValid()) {
++                LOGM(Log::ERR, "failed to open the EGL device render node, disabling linux dmabuf");
++                removeGlobal();
++            }
++            return;
++        }
++
+         if (g_pCompositor->m_drmRenderNode.fd >= 0 && rendererFD == g_pCompositor->m_drmRenderNode.fd) {
+             // Already using the compositor's render node, reuse it.
+             m_mainDeviceFD = CFileDescriptor{fcntl(g_pCompositor->m_drmRenderNode.fd, F_DUPFD_CLOEXEC, 0)};
+diff --git a/src/protocols/MesaDRM.cpp b/src/protocols/MesaDRM.cpp
+index c73d98c..d276981 100644
+--- a/src/protocols/MesaDRM.cpp
++++ b/src/protocols/MesaDRM.cpp
+@@ -134,6 +134,12 @@ CMesaDRMProtocol::CMesaDRMProtocol(const wl_interface* iface, const int& ver, co
+         return;
+     }
+ 
++    // Split display/GPU devices (NVIDIA Jetson Thor): clients must use the EGL device's render node.
++    if (auto eglNode = g_pHyprOpenGL ? g_pHyprOpenGL->eglDeviceRenderNode() : std::nullopt; eglNode && *eglNode != m_nodeName) {
++        LOGM(Log::DEBUG, "Advertising the EGL device render node {} instead of {}", *eglNode, m_nodeName);
++        m_nodeName = *eglNode;
++    }
++
+     drmFreeDevice(&dev);
+ }
+ 
+diff --git a/src/render/OpenGL.cpp b/src/render/OpenGL.cpp
+index baee1ad..fe30dc8 100644
+--- a/src/render/OpenGL.cpp
++++ b/src/render/OpenGL.cpp
+@@ -243,6 +243,21 @@ static bool drmDeviceHasName(const drmDevice* device, const std::string& name) {
+     return false;
+ }
+ 
++#ifndef EGL_DRM_RENDER_NODE_FILE_EXT
++#define EGL_DRM_RENDER_NODE_FILE_EXT 0x3377
++#endif
++
++std::optional<std::string> CHyprOpenGLImpl::eglDeviceRenderNode() {
++    if (!m_eglDevice || !m_proc.eglQueryDeviceStringEXT)
++        return std::nullopt;
++
++    const char* node = m_proc.eglQueryDeviceStringEXT(m_eglDevice, EGL_DRM_RENDER_NODE_FILE_EXT);
++    if (!node || !*node)
++        return std::nullopt;
++
++    return std::string{node};
++}
++
+ EGLDeviceEXT CHyprOpenGLImpl::eglDeviceFromDRMFD(int drmFD) {
+     EGLint nDevices = 0;
+     if (!m_proc.eglQueryDevicesEXT(0, nullptr, &nDevices)) {
+diff --git a/src/render/OpenGL.hpp b/src/render/OpenGL.hpp
+index fc0e345..8fd3521 100644
+--- a/src/render/OpenGL.hpp
++++ b/src/render/OpenGL.hpp
+@@ -243,6 +243,9 @@ namespace Render::GL {
+         WP<CShader>                               useShader(WP<CShader> prog);
+ 
+         bool                                      explicitSyncSupported();
++        // Render node of the EGL device the renderer runs on, if the driver reports one. On split
++        // display/GPU DRM devices (NVIDIA Jetson Thor) it differs from the compositor's render node.
++        std::optional<std::string>                eglDeviceRenderNode();
+         WP<CShader>                               getShaderVariant(Render::ePreparedFragmentShader frag, Render::ShaderFeatureFlags features = 0);
+ 
+         bool                                      m_shadersInitialized = false;

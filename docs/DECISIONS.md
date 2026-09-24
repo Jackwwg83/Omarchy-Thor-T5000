@@ -79,3 +79,21 @@ Found by Claude in the same pass: stopping GDM leaves the user's GNOME Xorg sess
 so the run also terminates X11/Wayland sessions and waits until nothing holds the display node.
 
 The owner granted autonomous use of the machine overnight, so the run went ahead without an observer.
+
+## 2026-09-24 — Gate 0b findings (overnight, no observer)
+
+Runs are under `~/raytone/evidence/gate0b/run-*` on the Thor. Boot and firmware state (efibootmgr,
+boot slots, BIOS version) compared unchanged after every run; GDM came back each time.
+
+| Finding | Evidence | Consequence |
+| --- | --- | --- |
+| Stock Hyprland 0.56.2 starts on Thor from the Arch userspace, scans out 2560×1440 on the HDMI CRTC (kernel state), advertises `linux-drm-syncobj` (explicit sync), and handles DPMS off/on | `hyprland-*-scanout.txt`, `client-tests.log` | The compositor path works; the Orin blocker does not apply |
+| Wayland EGL and Xwayland GLX clients fall back to llvmpipe | `egl-wayland-client.txt`, `xwayland-glxinfo.txt` | Unusable desktop without a fix |
+| Cause: Thor exposes display (nvidia-drm on tegra264-display, `card3`/`renderD130`) and GPU (nvidia-drm on PCI, `card2`/`renderD129`) as two DRM devices. Aquamarine picks the display device's own render node; Hyprland advertises it as the dma-buf main device and in `wl_drm`. NVIDIA EGL cannot initialise on `renderD130` (Gate 0a), so clients drop to Mesa | Hyprland log: `Creating CDRMRenderer on gpu /dev/dri/renderD130`, `Using RENDERNODEFD` | Needs a code change, not configuration: neither aquamarine nor Hyprland has an override |
+| Aliasing `renderD130` to the GPU node inside the probe root breaks NVIDIA's own EGL device enumeration (kmscube cannot initialise, Hyprland aborts) | run-20260924-225204 | Device-node tricks are ruled out for the real system too |
+| Only advertising a different render node from aquamarine would make Hyprland's `eglDeviceFromDRMFD` pick EGL device 2 (`card2`), which fails to initialise | Hyprland `OpenGL.cpp` matching by primary node; Gate 0a devices 1–3 fail | Patch Hyprland, not aquamarine |
+| Fix: Hyprland advertises the render node the chosen EGL device reports (`EGL_DRM_RENDER_NODE_FILE_EXT`, `renderD129` for device 0) in linux-dmabuf feedback and `wl_drm`, when it differs from its own; no change on single-device GPUs | `patches/hyprland-0.56.2-egl-render-node.patch`, `packages/hyprland` (Arch recipe, pkgrel 3.1) | Being validated |
+| kmscube polls stdin each frame and quits when it is readable; under systemd stdin is `/dev/null` | "user interrupted!" after the first frame | Harness fix: `-N` |
+| kmscube's atomic mode cannot import the KMS out-fence into EGL (`create_fence: Assertion`) | `kmscube-atomic.txt` | Not on Hyprland's path (it passed); recorded, frame pacing measured with legacy flips |
+| Hyprland exits with SIGSEGV after `hl.dsp.exit()` in both rounds | exit 139 | To investigate from the crash report |
+| An NVRM assertion (`NV0080_CTRL_CMD_INTERNAL_MEMSYS_SET_ZBC_REFERENCED`, object not found) appears once per run | `kernel.txt` | Non-fatal; noted |
