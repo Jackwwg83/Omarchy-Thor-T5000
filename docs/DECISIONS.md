@@ -221,3 +221,11 @@ Attended procedure (owner present, able to unplug the drive or cut power):
    - efivarfs mounted `ro`
 5. Test the dead-man once: create no `/run/raytone-keep` and let it reboot the machine at 20 minutes. It should come back to JetPack. After that, a later boot creates the keep file.
 6. Only if 4 fails: `arm-once raytone-arch-jetpack-kernel`.
+
+## 2026-09-25 — `bl_prof_*` settled by the Slice 1a experiment
+
+The plan left `bl_prof_*` open: the two reviewers disagreed, and the Slice 1a experiment was to decide. With
+GRUB loading JetPack's own kernel and initrd directly, L4TLauncher never runs, so the arguments are absent,
+and JetPack boots normally: GDM, no failed units, `nvidia-smi`. The device tree is identical apart from
+`/chosen`. Decision: the Arch entries do not carry `bl_prof_*` (`thor_boot.cmdline` drops them, as it already
+did). Evidence: [attended/README.md](evidence/slice1b/attended/README.md), step 3.

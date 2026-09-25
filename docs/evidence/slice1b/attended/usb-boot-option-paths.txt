@@ -1,0 +1,12 @@
+== before
+BootCurrent: 0001
+BootOrder: 0004,0001,0000,0002,0003
+Boot0004* UEFI JZAO USB3.2 Gen1 2797824271339930	/USB(5,0)/USB(2,0){auto_created_boot_option}
+== after1
+BootCurrent: 0005
+BootOrder: 0005,0001,0000,0002,0003
+Boot0005* UEFI JZAO USB3.2 Gen1 2797824271339930	/USB(5,0)/USB(1,0){auto_created_boot_option}
+== after2
+BootCurrent: 0004
+BootOrder: 0004,0001,0000,0002,0003
+Boot0004* UEFI JZAO USB3.2 Gen1 2797824271339930	/USB(2,0)/USB(1,0){auto_created_boot_option}

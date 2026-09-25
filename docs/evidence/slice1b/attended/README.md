@@ -18,3 +18,19 @@ The boot-option change was made by the firmware, not by any script: edk2 refresh
 entries when a removable device's path changes. The drive was moved to another USB-A port during the night,
 and there had been no reboot since, so this boot was the first to see the new path. None of the project's tools
 writes UEFI variables.
+
+## Step 3: one-shot `jetpack-grub`, JetPack's kernel and initrd loaded by GRUB (14:51)
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| `arm-once` set `next_entry` and read it back; owner saw GRUB preselect the Slice 1a entry | real data | `arm-jetpack-grub.log`, owner by eye |
+| JetPack came up without L4TLauncher: SSH back after 66 s, GDM active, no failed units, `nvidia-smi` shows NVIDIA Thor 595.78, nvidia modules loaded | real data | checked on the Thor |
+| `/proc/cmdline` is the entry's command line (GRUB adds `BOOT_IMAGE=`); `bl_prof_*` is absent, as it is injected by L4TLauncher, and nothing needs it | real data | `after2-cmdline.txt` |
+| Device tree: same as the L4TLauncher boot except `/chosen` `bootargs` (the command line) and `linux,uefi-mmap-*`. The tree comes from UEFI; L4TLauncher only sets `bootargs` | real data | `fdt-diff-2.txt` |
+| `next_entry` cleared in grubenv after use, so the next boot takes the default again | real data | grubenv read on the Thor |
+| Slots, BIOS version, `uname -v` unchanged | real data | compared on the Thor |
+
+The firmware gives the drive a different USB device path on each boot: `USB(5,0)/USB(2,0)`, then `USB(5,0)/USB(1,0)`,
+then `USB(2,0)/USB(1,0)`. It rebuilds its auto-created boot option each time (Boot0004 → 0005 → 0004) and
+keeps it first in BootOrder (`usb-boot-option-paths.txt`). This is the firmware's own variable write, made with
+the drive inserted whatever OS boots next. It does not come from the project and does not affect booting.
