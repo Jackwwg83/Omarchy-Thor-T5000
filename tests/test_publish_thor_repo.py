@@ -31,13 +31,17 @@ STUB = textwrap.dedent("""\
       gpg)
         case "$*" in
           *--list-secret-keys*) [[ -f $STATE/no-key ]] || echo "fpr:::::::::$FPR:" ;;
-          *--detach-sign*) for a in "$@"; do f=$a; done; touch "$f.sig" ;;
+          *--detach-sign*) for a in "$@"; do f=$a; done; echo "sig-by-$FPR" > "$f.sig" ;;
           *--export*) echo PUBKEY ;;
+          *--verify*) for a in "$@"; do [[ $a == *.sig ]] && s=$a; done; grep -q "sig-by-$FPR" "$s" || exit 1
+                      echo "[GNUPG:] VALIDSIG $FPR" ;;
         esac ;;
       chroot)
         shift  # the root
         if [[ $1 == /usr/bin/env ]]; then shift; [[ $1 == -i ]] && shift; while [[ $1 == *=* ]]; do shift; done; fi
         echo "in-chroot $*" >> "$STATE/calls"
+        if [[ $1 == pacman-key && $2 == --verify && -f $STATE/untrusted ]]; then exit 1; fi
+        if [[ $1 == pacman-key && $2 == --list-keys && -f $STATE/untrusted ]]; then exit 1; fi
         if [[ $1 == repo-add && ! -f $STATE/repo-add-noop ]]; then
           # model repo-add: one directory per package (name-version-release) in a gzip tar
           shift 2; db=$TARGET$1; shift
@@ -158,7 +162,54 @@ class PublishThorRepoTests(unittest.TestCase):
 
     def test_installs_nothing_on_the_drive(self):
         self.write()
-        self.assertFalse([c for c in self.chroot() if c.startswith(("pacman ", "pacman-key"))])
+        # read-only key checks (--list-keys, --verify) are expected; nothing installs or changes keys
+        self.assertFalse([c for c in self.chroot() if c.startswith("pacman ")
+                          or (c.startswith("pacman-key") and c.split()[1] not in ("--list-keys", "--verify"))])
+
+    def test_a_stale_signature_is_replaced(self):
+        # a rebuilt package keeps its file name; the old .sig next to it does not match
+        stale = self.new[0].with_name(self.new[0].name + ".sig")
+        stale.write_text("old")
+        self.write()
+        self.assertIn(f"sig-by-{FPR}", stale.read_text())
+
+    def test_the_drive_must_trust_the_signing_key(self):
+        (self.state / "untrusted").touch()
+        r = self.run_script("--write", "--confirm-serial", SERIAL)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("trust", r.stderr)
+        self.assertFalse([c for c in self.chroot() if c.startswith("repo-add")])
+
+    def test_each_published_package_verifies_with_the_drives_keyring(self):
+        self.write()
+        for p in self.new:
+            self.assertIn(f"pacman-key --verify /var/lib/raytone/repo/{p.name}.sig /var/lib/raytone/repo/{p.name}",
+                          self.chroot())
+
+    def test_links_on_the_drive_cannot_redirect_host_writes(self):
+        # the host (JetPack, root) copies into the drive's repository: a link there must not reach it
+        victim = pathlib.Path(self.tmp.name) / "host-file"
+        victim.write_text("host")
+        repo = self.target / "var" / "lib" / "raytone" / "repo"
+        for link in ("raytone-thor.gpg", self.new[0].name, self.new[0].name + ".sig"):
+            with self.subTest(link=link):
+                (repo / link).symlink_to(victim)
+                r = self.run_script("--write", "--confirm-serial", SERIAL)
+                self.assertNotEqual(r.returncode, 0)
+                self.assertIn("link", r.stderr)
+                self.assertEqual(victim.read_text(), "host")
+                (repo / link).unlink()
+
+    def test_a_linked_repository_directory_is_refused(self):
+        elsewhere = pathlib.Path(self.tmp.name) / "elsewhere"
+        elsewhere.mkdir()
+        raytone = self.target / "var" / "lib" / "raytone"
+        (raytone / "repo").rename(elsewhere / "repo")
+        raytone.rmdir()
+        raytone.symlink_to(elsewhere)
+        r = self.run_script("--write", "--confirm-serial", SERIAL)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("link", r.stderr)
 
     def test_the_database_must_list_every_build(self):
         (self.state / "repo-add-noop").touch()

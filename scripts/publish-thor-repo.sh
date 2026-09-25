@@ -75,7 +75,13 @@ mount -t ext4 -o noatime "$ROOT_DEV" "$MNT"
   die "$ROOT_DEV has no [raytone-thor] repository; run install-thor-omarchy.sh first"
 repo_signing_key
 thor_chroot_mount
+in_target pacman-key --list-keys "$fpr" > /dev/null 2>&1 ||
+  die "the drive's pacman does not trust the signing key $fpr (install-thor-omarchy.sh lsigns it)"
 repo_publish "${PKG_FILES[@]}"
+for f in "${PKG_FILES[@]}"; do
+  in_target pacman-key --verify "$REPO/${f##*/}.sig" "$REPO/${f##*/}" > /dev/null 2>&1 ||
+    die "${f##*/} does not verify with the drive's keyring"
+done
 
 listed=$(tar -tzf "$MNT$REPO/$REPO_DB" | sed 's|^\./||; s|/.*||' | sort -u)
 for f in "${PKG_FILES[@]}"; do

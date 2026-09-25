@@ -20,14 +20,38 @@ repo_signing_key() {
   [[ $fpr =~ ^[0-9A-F]{40}$ ]] || die "no usable signing key in $SIGNING"
 }
 
-# repo_publish FILE...: sign (once) and copy each package, then add exactly these to the database.
+# The host (JetPack, as root) writes into the drive's repository, so a link on the drive must not
+# redirect those writes to the host: refuse links on the way to the repository and at each target.
+repo_no_links() {
+  local d=$MNT f
+  for f in var lib raytone repo; do
+    d=$d/$f
+    [[ ! -L $d ]] || die "${d#"$MNT"} on the drive is a link; refusing to write through it"
+  done
+  for f in "$@"; do
+    [[ ! -L $MNT$REPO/$f ]] || die "$REPO/$f on the drive is a link; refusing to write through it"
+  done
+}
+
+# repo_sign FILE: a detached signature by $fpr next to FILE; an existing one is kept only if it is
+# a valid signature by $fpr of this file (a rebuild keeps the file name, not the signature).
+repo_sign() {
+  if [[ -f $1.sig ]] && gpgs --status-fd 1 --verify "$1.sig" "$1" 2>/dev/null | grep -q "^\[GNUPG:\] VALIDSIG $fpr"; then
+    return 0
+  fi
+  gpgs --yes -u "$fpr" --detach-sign "$1"
+}
+
+# repo_publish FILE...: sign and copy each package, then add exactly these to the database.
 # Older files stay in the repository for rollback; the database entry is the one published last,
 # so only the files named here are added (a glob would add them in name order, -10 before -9).
 repo_publish() {
-  local f added=()
+  local f names=() added=()
+  for f in "$@"; do names+=("${f##*/}" "${f##*/}.sig"); done
+  repo_no_links raytone-thor.gpg "${names[@]}"
   mkdir -p "$MNT$REPO"
   for f in "$@"; do
-    [[ -f $f.sig ]] || gpgs --yes -u "$fpr" --detach-sign "$f"
+    repo_sign "$f"
     cp -f "$f" "$f.sig" "$MNT$REPO/"
     added+=("$REPO/${f##*/}")
   done
