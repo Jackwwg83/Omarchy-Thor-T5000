@@ -31,7 +31,12 @@ BLOCK=$block BEGIN_LINE=$begin END_LINE=$end awk '
   skip { next }
   { print }
   !done && /^[[:space:]]*\{[[:space:]]*$/ { print ENVIRON["BLOCK"]; done = 1 }
-' "$file" > "$tmp"
+  END { if (skip) exit 3 }
+' "$file" > "$tmp" || {
+  rm -f "$tmp"
+  echo "raytone-thor-menu-extension: $file has the BEGIN marker without its END marker; not changed" >&2
+  exit 1
+}
 cat "$tmp" > "$file"
 rm -f "$tmp"
 echo "Jetson AGX Thor: ${#ids[@]} menu entries hidden in $file"

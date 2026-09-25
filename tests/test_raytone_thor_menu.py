@@ -64,6 +64,18 @@ class MenuExtensionTests(unittest.TestCase):
         self.assertEqual(self.file.read_text(), once)
         self.assertEqual(once.count("BEGIN raytone-thor"), 1)
 
+    def test_an_unmatched_marker_leaves_the_file_alone(self):
+        # a BEGIN without its exact END line would otherwise skip the user's entries to the end
+        self.file.write_text(SKEL)
+        self.run_cmd()
+        broken = self.file.read_text().replace("  // END raytone-thor", "    // END raytone-thor (edited)")
+        broken = broken.replace("}\n", '  "personal": {"label":"Personal"},\n}\n')
+        self.file.write_text(broken)
+        r = subprocess.run(["bash", str(CMD)], env=dict(os.environ, HOME=str(self.home)), capture_output=True, text=True)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("marker", r.stderr)
+        self.assertEqual(self.file.read_text(), broken)
+
     def test_creates_the_file_when_missing(self):
         self.assertEqual(len(self.run_cmd()), 24)
 
