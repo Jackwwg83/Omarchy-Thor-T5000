@@ -1,0 +1,14 @@
+## cold boot 2026-09-25T16:08:44+08:00 uptime 44.74s
+#1 SMP PREEMPT Thu Aug  6 21:56:04 PDT 2026
+root=PARTUUID=ca5a56c6-4a4b-4e02-8183-ff166514ae3b
+efivarfs ro,nosuid,nodev,noexec,relatime
+wlP1p1s0         UP             192.168.1.35/24 
+NVIDIA Thor, 595.78, 45
+active
+active
+active
+1720
+failed units: 0
+System clock synchronized: yes
+Sep 25 15:57:36 raytone-thor systemd[1]: Using hardware watchdog /dev/watchdog0: 'NVIDIA Tegra186 WDT', version 0.
+Sep 25 15:57:36 raytone-thor systemd-fsck[260]: RAYTONE_ROOT: clean, 46781/15114240 files, 1938894/60451067 blocks

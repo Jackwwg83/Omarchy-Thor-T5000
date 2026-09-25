@@ -96,4 +96,16 @@ synced and rebooted, GRUB took its default, and JetPack came back (vendor kernel
 was empty. The owner saw the machine restart on its own. Evidence: `deadman-journal.txt`, the drive's journal read
 from JetPack. (The journal's timestamps come from the early-boot clock, which lags until NTP syncs.)
 
-Slice 1b still needs a cold boot (power off, power on) and the unplug test: without the drive, the Thor boots JetPack.
+## Step 6: cold boot, and the unplug test (16:02–16:15)
+
+This machine has no power button, only reset, so "cold" means power cable out for 10 s, then back in; it powers on
+by itself.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| `arm-once raytone-arch` from JetPack, `systemctl poweroff`, power cycle: GRUB ran the one-shot entry (owner by eye); Arch on SSH at 34 s | real data | `cold-boot-checks.txt` |
+| After the cold boot: NVIDIA's kernel `#1`, root on the drive, efivarfs `ro`, Wi-Fi up, `nvidia-smi` NVIDIA Thor 595.78, fan 1720 rpm, thermal guard and dead-man active, no failed units, NTP synced, `RAYTONE_ROOT: clean` | real data | `cold-boot-checks.txt` |
+| `systemctl poweroff` from Arch, drive unplugged, power cycle: no GRUB, JetPack from the NVMe (`BootCurrent: 0001`, L4TLauncher's `bl_prof_*` on the command line), GDM active | real data | `unplug-checks.txt` |
+| Without the drive, the firmware drops the USB option from BootOrder; slots and BIOS version (`r39.2.1-7e9f9ec4`) unchanged | real data | `unplug-checks.txt` |
+
+Slice 1b passes: every check in the plan has been run with the owner present.

@@ -1,0 +1,8 @@
+16:14:58 JetPack up 30.48s, vendor kernel #2 (Wed Aug 19 15:09:25 CST), USB drive not present
+BootCurrent: 0001
+BootOrder: 0001,0000,0002,0003
+Boot0001* UEFI <NVMe> {auto_created_boot_option}
+cmdline: bl_prof_* present (L4TLauncher path)
+gdm: active
+nvbootctrl slots: unchanged since before step 1
+bios_version: r39.2.1-7e9f9ec4, unchanged
