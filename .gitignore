@@ -1,0 +1,22 @@
+# Build and probe output
+*.pkg.tar.*
+*.log
+# ...except logs kept as evidence (scanned for secrets before they are committed)
+!/docs/evidence/**/*.log
+/build/
+/src/
+/pkg/
+/upstream/
+/cache/
+
+# Vendor binaries captured from a JetPack install: never committed (the PKGBUILD pins them)
+/packages/raytone-thor-leetop-nic/*.ko
+/packages/raytone-thor-leetop-nic/*.bin
+
+# Machine-local settings and notes
+.env
+*.local
+/SCRATCHPAD.md
+
+.DS_Store
+__pycache__/
