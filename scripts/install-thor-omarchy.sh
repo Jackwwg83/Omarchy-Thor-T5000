@@ -18,10 +18,13 @@
 #   3. The Thor graphics stack and Omarchy, then Omarchy's base package list, read from the installed
 #      omarchy package, with manifests/omarchy-arm-substitutions applied.
 #   4. raytone-omarchy-apply-system --install-user NAME --first-install (upstream's system setup with
-#      the Thor overrides), then omarchy-provision-user --force --first-install as NAME.
-#   5. Omarchy's firewall denies all incoming traffic from the next boot on; SSH (22/tcp) and mDNS
-#      (5353/udp) are allowed so the drive stays reachable.
-#   6. Checks: packages, SDDM and the bring-up units enabled, firewall rules, pacman.conf.
+#      the Thor overrides; the firewall override keeps SSH and mDNS open and enables UFW last).
+#   5. NAME already exists (install-thor-root.sh), so it gets /etc/skel the way upstream's
+#      omarchy-reinstall-configs replays it (cp -af, existing files kept as numbered backups), then
+#      omarchy-provision-user --force --first-install in Omarchy's first-boot context
+#      (provision-owner): the default context would take the ISO's offline x86_64 Node tarball.
+#   6. Checks: packages, SDDM and the bring-up units enabled, UFW enabled with SSH and mDNS allowed,
+#      pacman.conf.
 #
 # A dry run unless --write. Tests: tests/test_install_thor_omarchy.py (RAYTONE_* variables exist for them).
 set -euo pipefail
@@ -142,13 +145,13 @@ in_target gpgconf --homedir /etc/pacman.d/gnupg --kill all || true
 # 4. Omarchy's system setup with the Thor overrides, then the user.
 in_target OMARCHY_ALLOW_DIRECT_PACMAN=1 raytone-omarchy-apply-system --install-user "$user" --first-install ||
   die "raytone-omarchy-apply-system failed (log: /var/log/omarchy-install.log on the drive)"
-setpriv --no-new-privs --bounding-set "$DROP_CAPS" -- \
-  chroot --userspec="$user:$user" "$MNT" /usr/bin/env -i PATH=/usr/bin HOME="/home/$user" USER="$user" LANG=C.UTF-8 \
-  omarchy-provision-user --force --first-install || die "omarchy-provision-user failed"
-
-# 5. Keep the drive reachable once Omarchy's firewall is active.
-in_target ufw allow 22/tcp
-in_target ufw allow 5353/udp
+as_user() {
+  setpriv --no-new-privs --bounding-set "$DROP_CAPS" -- \
+    chroot --userspec="$user:$user" "$MNT" /usr/bin/env -i PATH=/usr/bin HOME="/home/$user" USER="$user" LANG=C.UTF-8 \
+    OMARCHY_SETUP_CONTEXT=provision-owner "$@"
+}
+as_user cp -af --backup=numbered /etc/skel/. "/home/$user/" || die "copying /etc/skel into /home/$user failed"
+as_user omarchy-provision-user --force --first-install || die "omarchy-provision-user failed"
 
 # 6. Verify.
 in_target pacman -Q omarchy omarchy-settings raytone-thor-omarchy raytone-thor-graphics hyprland > /dev/null ||
@@ -156,12 +159,11 @@ in_target pacman -Q omarchy omarchy-settings raytone-thor-omarchy raytone-thor-g
 for u in sddm raytone-deadman.timer raytone-thermal-guard; do
   in_target systemctl is-enabled "$u" > /dev/null || die "unit not enabled: $u"
 done
-for rule in "22/tcp" "5353/udp"; do
-  grep -q "allow $rule" "$MNT/etc/ufw/user.rules" || grep -qE "allow (tcp|udp) ${rule%/*} " "$MNT/etc/ufw/user.rules" ||
-    die "firewall rule missing: $rule"
-done
+grep -qx "ENABLED=yes" "$MNT/etc/ufw/ufw.conf" || die "UFW is not enabled for the next boot"
+grep -qE "^### tuple ### allow tcp 22 " "$MNT/etc/ufw/user.rules" || die "firewall does not allow SSH (22/tcp)"
+grep -qE "^### tuple ### allow udp 5353 " "$MNT/etc/ufw/user.rules" || die "firewall does not allow mDNS (5353/udp)"
 cmp -s "$TEMPLATES/pacman.conf" "$MNT/etc/pacman.conf" || die "/etc/pacman.conf is not the Thor template after setup"
 in_target pacman -Q > "$MNT/var/lib/raytone/installed-packages-omarchy.txt" 2>/dev/null || true
 sync
-echo "verified: packages, sddm and bring-up units, firewall rules, pacman.conf"
+echo "verified: packages, sddm and bring-up units, UFW with SSH and mDNS, pacman.conf"
 echo "installed: Omarchy $(in_target pacman -Q omarchy 2>/dev/null | awk '{print $2}') with the Thor layer on $ROOT_DEV"

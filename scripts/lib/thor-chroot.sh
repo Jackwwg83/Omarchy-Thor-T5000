@@ -5,13 +5,19 @@
 # shellcheck shell=bash
 
 # Capabilities the package manager and Omarchy's setup never need; dropping them also keeps them
-# from loading modules, remounting efivarfs or touching raw devices.
-DROP_CAPS=-sys_module,-sys_rawio,-sys_boot,-sys_time,-bpf,-perfmon,-mac_admin,-mac_override,-syslog,-wake_alarm,-sys_admin,-sys_ptrace,-mknod,-kill
+# from loading modules, remounting efivarfs, touching raw devices, or changing the host's network
+# stack and firewall (net_admin, net_raw): the chroot shares the running kernel.
+DROP_CAPS=-sys_module,-sys_rawio,-sys_boot,-sys_time,-bpf,-perfmon,-mac_admin,-mac_override,-syslog,-wake_alarm,-sys_admin,-sys_ptrace,-mknod,-kill,-net_admin,-net_raw
 
 thor_chroot_mount() {
   local n
   mkdir -p "$MNT"/{proc,sys,dev,run,tmp}
   mount -t proc proc "$MNT/proc"
+  # The kernel's tunables and sysrq belong to the running host: read-only inside.
+  mount --bind "$MNT/proc/sys" "$MNT/proc/sys"
+  mount -o remount,bind,ro "$MNT/proc/sys"
+  mount --bind "$MNT/proc/sysrq-trigger" "$MNT/proc/sysrq-trigger"
+  mount -o remount,bind,ro "$MNT/proc/sysrq-trigger"
   mount -t sysfs -o ro,nosuid,nodev,noexec sysfs "$MNT/sys"
   mount -t tmpfs -o mode=0755,nosuid tmpfs "$MNT/dev"
   for n in null zero full random urandom tty; do touch "$MNT/dev/$n"; mount --bind "/dev/$n" "$MNT/dev/$n"; done

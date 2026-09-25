@@ -19,7 +19,7 @@ BASE = "chromium\nnvim\nvi\nobs-studio\nomarchy-nvim\n# comment\n\nsddm\n"
 STUB = textwrap.dedent("""\
     #!/bin/bash
     name=$(basename "$0")
-    if [[ $name == setpriv ]]; then while [[ $1 != -- ]]; do shift; done; shift; exec "$@"; fi
+    if [[ $name == setpriv ]]; then echo "setpriv $*" >> "$STATE/calls"; while [[ $1 != -- ]]; do shift; done; shift; exec "$@"; fi
     echo "$name $*" >> "$STATE/calls"
     case $name in
       lsblk)
@@ -46,8 +46,14 @@ STUB = textwrap.dedent("""\
         fi
         if [[ $1 == systemctl && $2 == is-enabled && -f $STATE/disabled-$3 ]]; then exit 1; fi
         if [[ $1 == bash && $3 == *repo-add* ]]; then touch "$TARGET/var/lib/raytone/repo/raytone-thor.db.tar.gz"; fi
-        if [[ $1 == ufw && $2 == allow ]]; then mkdir -p "$TARGET/etc/ufw"; echo "### tuple ### allow $3" >> "$TARGET/etc/ufw/user.rules"; fi
-        if [[ $1 == raytone-omarchy-apply-system && -f $STATE/apply-fails ]]; then exit 3; fi
+        if [[ $1 == raytone-omarchy-apply-system ]]; then
+          [[ -f $STATE/apply-fails ]] && exit 3
+          # what the Thor firewall override leaves behind
+          mkdir -p "$TARGET/etc/ufw"
+          [[ -f $STATE/no-ssh-rule ]] || echo "### tuple ### allow tcp 22 0.0.0.0/0 any 0.0.0.0/0 in comment=raytone-ssh" >> "$TARGET/etc/ufw/user.rules"
+          echo "### tuple ### allow udp 5353 0.0.0.0/0 any 0.0.0.0/0 in comment=raytone-mdns" >> "$TARGET/etc/ufw/user.rules"
+          echo "ENABLED=yes" > "$TARGET/etc/ufw/ufw.conf"
+        fi
         ;;
     esac
     exit 0
@@ -170,14 +176,33 @@ class InstallThorOmarchyTests(unittest.TestCase):
         self.write()
         apply = self.index("raytone-omarchy-apply-system --install-user nvidia --first-install")
         self.assertLess(self.index("pacman -S --noconfirm --needed raytone-thor-graphics"), apply)
-        self.assertTrue(any(c.startswith("omarchy-provision-user --force --first-install") for c in self.chroot("nvidia")))
-        self.assertLess(apply, self.index("ufw allow 22/tcp"))
+        user = self.chroot("nvidia")
+        skel = next(i for i, c in enumerate(user) if c.startswith("cp -af --backup=numbered /etc/skel/. /home/nvidia/"))
+        provision = next(i for i, c in enumerate(user) if c.startswith("omarchy-provision-user --force --first-install"))
+        self.assertLess(skel, provision)
 
-    def test_ssh_and_mdns_stay_reachable_through_the_firewall(self):
+    def test_provisioning_uses_omarchys_first_boot_context_not_the_iso(self):
+        # --first-install in the default context means "ISO chroot": an offline x86_64 Node tarball.
         self.write()
-        rules = (self.target / "etc" / "ufw" / "user.rules").read_text()
-        self.assertIn("allow 22/tcp", rules)
-        self.assertIn("allow 5353/udp", rules)
+        self.assertIn("env OMARCHY_SETUP_CONTEXT=provision-owner", self.calls())
+
+    def test_the_firewall_must_allow_ssh_before_the_install_counts(self):
+        (self.state / "no-ssh-rule").touch()
+        r = self.run_script("--write", "--confirm-serial", SERIAL)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("22", r.stderr)
+
+    def test_the_chroot_cannot_touch_the_hosts_network_or_sysctls(self):
+        self.write()
+        caps = [c for c in self.calls() if c.startswith("setpriv ")]
+        self.assertTrue(caps)
+        for c in caps:
+            self.assertIn("-net_admin", c)
+            self.assertIn("-net_raw", c)
+        mounts = [c for c in self.calls() if c.startswith("mount ")]
+        for path in ("/proc/sys", "/proc/sysrq-trigger"):
+            with self.subTest(path=path):
+                self.assertTrue(any("remount,bind,ro" in m and m.endswith(path) for m in mounts), mounts)
 
     def test_a_failed_omarchy_setup_fails_the_install(self):
         (self.state / "apply-fails").touch()
