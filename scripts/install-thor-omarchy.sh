@@ -38,6 +38,8 @@ die() { echo "install-thor-omarchy: $*" >&2; exit 1; }
 source "$HERE/lib/usb.sh"
 # shellcheck source=lib/thor-chroot.sh
 source "$HERE/lib/thor-chroot.sh"
+# shellcheck source=lib/thor-repo.sh
+source "$HERE/lib/thor-repo.sh"
 
 disk='' serial='' write=0 confirm='' pkgdir='' user='' dev=''
 while (($#)); do
@@ -59,7 +61,8 @@ REQUIRED=(omarchy omarchy-settings raytone-thor-omarchy raytone-thor-graphics ra
 for p in "${REQUIRED[@]}"; do
   compgen -G "$pkgdir/$p-[0-9]*.pkg.tar.*" | grep -qE '\.pkg\.tar\.(xz|zst)$' || die "package $p not found in '$pkgdir'"
 done
-mapfile -t PKG_FILES < <(compgen -G "$pkgdir/*.pkg.tar.*" | grep -E '\.pkg\.tar\.(xz|zst)$' | sort)
+# Version order: when DIR holds several builds of a package, the newest is added to the database last.
+mapfile -t PKG_FILES < <(compgen -G "$pkgdir/*.pkg.tar.*" | grep -E '\.pkg\.tar\.(xz|zst)$' | sort -V)
 
 MNT=${RAYTONE_TARGET_MOUNT:-/mnt/raytone-target}
 HOST_ETC=${RAYTONE_HOST_ETC:-/etc}
@@ -68,7 +71,6 @@ TEMPLATES=$HERE/../packages/raytone-thor-omarchy/pacman
 SUBSTITUTIONS=$HERE/../manifests/omarchy-arm-substitutions
 OMARCHY_KEY=40DFB630FF42BCFFB047046CF0134EE680CAC571
 ROOT_DEV=${dev}2
-REPO=/var/lib/raytone/repo
 [[ -f $TEMPLATES/pacman.conf && -f $TEMPLATES/mirrorlist ]] || die "no pacman templates in $TEMPLATES"
 
 if ((!write)); then
@@ -102,23 +104,8 @@ thor_chroot_mount
 pac() { in_target OMARCHY_ALLOW_DIRECT_PACMAN=1 pacman "$@"; }
 
 # 1. Sign and publish the port's packages as the drive's repository.
-install -d -m 0700 "$SIGNING"
-gpgs() { GNUPGHOME=$SIGNING gpg --batch "$@"; }
-fpr=$(gpgs --list-secret-keys --with-colons 2>/dev/null | awk -F: '$1 == "fpr" {print $10; exit}')
-if [[ -z $fpr ]]; then
-  echo "+ creating the local repository signing key in $SIGNING"
-  gpgs --passphrase '' --quick-generate-key 'RaytoneOS Thor local repository' ed25519 sign never
-  fpr=$(gpgs --list-secret-keys --with-colons | awk -F: '$1 == "fpr" {print $10; exit}')
-fi
-[[ $fpr =~ ^[0-9A-F]{40}$ ]] || die "no usable signing key in $SIGNING"
-mkdir -p "$MNT$REPO"
-for f in "${PKG_FILES[@]}"; do
-  [[ -f $f.sig ]] || gpgs --yes -u "$fpr" --detach-sign "$f"
-  cp -f "$f" "$f.sig" "$MNT$REPO/"
-done
-gpgs --export "$fpr" > "$MNT$REPO/raytone-thor.gpg"
-in_target bash -c "shopt -s nullglob; repo-add -q $REPO/raytone-thor.db.tar.gz $REPO/*.pkg.tar.xz $REPO/*.pkg.tar.zst"
-[[ -f $MNT$REPO/raytone-thor.db.tar.gz ]] || die "repo-add did not create the repository"
+repo_signing_key --create
+repo_publish "${PKG_FILES[@]}"
 
 # 2. Repositories and keys.
 mkdir -p "$MNT/etc/pacman.d"

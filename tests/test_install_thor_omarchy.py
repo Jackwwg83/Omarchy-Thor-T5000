@@ -46,7 +46,7 @@ STUB = textwrap.dedent("""\
           mkdir -p "$TARGET/usr/share/omarchy/install"; printf '%s' "$BASE" > "$TARGET/usr/share/omarchy/install/omarchy-base.packages"
         fi
         if [[ $1 == systemctl && $2 == is-enabled && -f $STATE/disabled-$3 ]]; then exit 1; fi
-        if [[ $1 == bash && $3 == *repo-add* ]]; then touch "$TARGET/var/lib/raytone/repo/raytone-thor.db.tar.gz"; fi
+        if [[ $1 == repo-add ]]; then touch "$TARGET/var/lib/raytone/repo/raytone-thor.db.tar.gz"; fi
         if [[ $1 == raytone-omarchy-apply-system ]]; then
           [[ -f $STATE/apply-fails ]] && exit 3
           # what the Thor firewall override leaves behind
@@ -145,11 +145,23 @@ class InstallThorOmarchyTests(unittest.TestCase):
             with self.subTest(p=p):
                 self.assertTrue((repo / p).exists())
                 self.assertTrue((repo / (p + ".sig")).exists())
-        self.assertTrue(any(c.startswith("bash -c") and "repo-add" in c for c in self.chroot()), self.chroot())
+        adds = [c for c in self.chroot() if c.startswith("repo-add -q /var/lib/raytone/repo/raytone-thor.db.tar.gz ")]
+        self.assertEqual(len(adds), 1, self.chroot())
+        for p in PKGS:
+            self.assertIn(f"/var/lib/raytone/repo/{p}", adds[0].split())
         self.assertEqual((self.target / "etc" / "pacman.conf").read_text(),
                          (ROOT / "packages" / "raytone-thor-omarchy" / "pacman" / "pacman.conf").read_text())
         self.assertTrue(any(c.startswith("pacman-key --lsign-key ABCDEF0123456789ABCDEF0123456789ABCDEF01")
                             for c in self.chroot()))
+
+    def test_the_newest_build_is_added_last(self):
+        # repo-add keeps the entry it adds last; name order would put -10 before -9
+        for rel in ("9", "10"):
+            (self.pkgs / f"leetop-nic-1.0-{rel}-aarch64.pkg.tar.xz").write_bytes(b"pkg")
+        self.write()
+        add = next(c for c in self.chroot() if c.startswith("repo-add ")).split()
+        self.assertLess(add.index("/var/lib/raytone/repo/leetop-nic-1.0-9-aarch64.pkg.tar.xz"),
+                        add.index("/var/lib/raytone/repo/leetop-nic-1.0-10-aarch64.pkg.tar.xz"))
 
     def test_a_signing_key_is_created_when_missing(self):
         (self.state / "no-key").touch()
