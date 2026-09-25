@@ -1,0 +1,8 @@
+# Existing Omarchy users get the Thor layer's per-user parts (pacman hook, hidden menu entries).
+post_install() {
+  raytone-thor-user-setup
+}
+
+post_upgrade() {
+  post_install
+}
