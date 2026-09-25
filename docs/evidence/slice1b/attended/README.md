@@ -87,3 +87,13 @@ To fix later:
 - `rtk_btusb` finds no `rtl8852bu_fw` or `rtl8852bu_config`. The Bluetooth firmware, like the drivers, is presumably vendor-installed on JetPack (Slice 2, Bluetooth).
 - `ina238 2-0044: error configuring the device: -121` and `tegra-soc-hwpm … Invalid IP`: compare with JetPack.
 - The early-boot clock starts at the last saved time until NTP syncs.
+
+## Step 5: dead-man fallback (15:57)
+
+Nobody created `/run/raytone-keep` on the second Arch boot. Twenty minutes after that boot, `raytone-deadman.service`
+requested the reboot (`reboot requested from client … ('systemctl') (unit raytone-deadman.service)`). The system
+synced and rebooted, GRUB took its default, and JetPack came back (vendor kernel `#2`, SSH at 88 s); `next_entry`
+was empty. The owner saw the machine restart on its own. Evidence: `deadman-journal.txt`, the drive's journal read
+from JetPack. (The journal's timestamps come from the early-boot clock, which lags until NTP syncs.)
+
+Slice 1b still needs a cold boot (power off, power on) and the unplug test: without the drive, the Thor boots JetPack.

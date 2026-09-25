@@ -1,0 +1,5 @@
+Sep 25 15:16:35 raytone-thor systemd[1]: Started RaytoneOS bring-up: reboot if nobody has confirmed this boot.
+Sep 25 15:57:30 raytone-thor systemd-logind[610]: reboot requested from client PID 6061 ('systemctl') (unit raytone-deadman.service)...
+Sep 25 15:57:30 raytone-thor systemd[1]: raytone-deadman.service: Deactivated successfully.
+Sep 25 15:57:33 raytone-thor systemd[1]: Reached target System Reboot.
+Sep 25 15:57:34 raytone-thor systemd-shutdown[1]: Syncing filesystems and block devices.
