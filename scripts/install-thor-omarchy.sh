@@ -10,7 +10,7 @@
 # firewall step only edits files there, never the running kernel's firewall.
 #
 #   1. The port's packages in DIR (omarchy, omarchy-settings, raytone-thor-omarchy,
-#      raytone-thor-graphics, hyprland; any others are added too) are signed with a local key
+#      raytone-thor-graphics, raytone-thor-nft-modules, hyprland; any others are added too) are signed with a local key
 #      (GNUPGHOME=~/raytone/signing, created if missing, never leaves the Thor's NVMe) and become the
 #      drive's [raytone-thor] repository at /var/lib/raytone/repo.
 #   2. pacman.conf and mirrorlist: the Thor templates (repository order: port, Arch Linux ARM,
@@ -23,6 +23,8 @@
 #      omarchy-reinstall-configs replays it (cp -af, existing files kept as numbered backups), then
 #      omarchy-provision-user --force --first-install in Omarchy's first-boot context
 #      (provision-owner): the default context would take the ISO's offline x86_64 Node tarball.
+#   5b. As Omarchy's ISO does: SDDM remembers NAME (the greeter has no user field), and Wi-Fi
+#       profiles are unbound from JetPack's interface name (Omarchy's iwd dependency keeps wlan0).
 #   6. Checks: packages, SDDM and the bring-up units enabled, UFW enabled with SSH and mDNS allowed,
 #      pacman.conf.
 #
@@ -53,7 +55,7 @@ resolve_usb_disk
 [[ $user =~ ^[a-z_][a-z0-9_-]*$ ]] || die "--user NAME is required"
 [[ -d $pkgdir ]] || die "--packages DIR is required"
 
-REQUIRED=(omarchy omarchy-settings raytone-thor-omarchy raytone-thor-graphics hyprland)
+REQUIRED=(omarchy omarchy-settings raytone-thor-omarchy raytone-thor-graphics raytone-thor-nft-modules hyprland)
 for p in "${REQUIRED[@]}"; do
   compgen -G "$pkgdir/$p-[0-9]*.pkg.tar.*" | grep -qE '\.pkg\.tar\.(xz|zst)$' || die "package $p not found in '$pkgdir'"
 done
@@ -152,6 +154,22 @@ as_user() {
 }
 as_user cp -af --backup=numbered /etc/skel/. "/home/$user/" || die "copying /etc/skel into /home/$user failed"
 as_user omarchy-provision-user --force --first-install || die "omarchy-provision-user failed"
+
+# 5b. What Omarchy's ISO does after setup (omarchy-iso configure_login, unencrypted): the greeter is
+# password-only and logs in SDDM's last user, so seed it. No autologin: SDDM stays the auth screen.
+install -d -m 0755 "$MNT/etc/sddm.conf.d" "$MNT/var/lib/sddm"
+printf '[Theme]\nCurrent=omarchy\n\n[Users]\nRememberLastUser=true\nRememberLastSession=true\n' \
+  > "$MNT/etc/sddm.conf.d/99-omarchy-login.conf"
+printf '[Last]\nSession=omarchy.desktop\nUser=%s\n' "$user" > "$MNT/var/lib/sddm/state.conf"
+in_target chown sddm:sddm /var/lib/sddm /var/lib/sddm/state.conf
+# Omarchy's aarch64 dependency iwd ships 80-iwd.link (NamePolicy=keep kernel): Wi-Fi is wlan0 here,
+# not the predictable name the profiles copied from JetPack are bound to. Unbind Wi-Fi profiles.
+for f in "$MNT"/etc/NetworkManager/system-connections/*.nmconnection; do
+  [[ -f $f ]] && grep -qx 'type=wifi' "$f" || continue
+  (umask 077; grep -vE '^interface-name=' "$f" > "$f.raytone") || true  # the profile holds the PSK
+  cat "$f.raytone" > "$f"
+  rm -f "$f.raytone"
+done
 
 # 6. Verify.
 in_target pacman -Q omarchy omarchy-settings raytone-thor-omarchy raytone-thor-graphics hyprland > /dev/null ||

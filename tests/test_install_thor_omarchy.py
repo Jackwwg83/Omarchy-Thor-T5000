@@ -1,6 +1,7 @@
 """install-thor-omarchy.sh with stubbed tools: refusals, order, repository, Omarchy setup, firewall, checks."""
 import os
 import pathlib
+import re
 import subprocess
 import tempfile
 import textwrap
@@ -13,7 +14,7 @@ SIZE = 248145510400
 OMARCHY_KEY = "40DFB630FF42BCFFB047046CF0134EE680CAC571"
 PKGS = ("omarchy-4.0.4-1-aarch64.pkg.tar.xz", "omarchy-settings-4.0.4-1-aarch64.pkg.tar.xz",
         "raytone-thor-omarchy-0.1.0-1-any.pkg.tar.xz", "raytone-thor-graphics-39.2.1-1-aarch64.pkg.tar.xz",
-        "hyprland-0.56.2-3.1-aarch64.pkg.tar.xz")
+        "hyprland-0.56.2-3.1-aarch64.pkg.tar.xz", "raytone-thor-nft-modules-6.8.12.l4t39.2.1-1-aarch64.pkg.tar.xz")
 BASE = "chromium\nnvim\nvi\nobs-studio\nomarchy-nvim\n# comment\n\nsddm\n"
 
 STUB = textwrap.dedent("""\
@@ -127,7 +128,7 @@ class InstallThorOmarchyTests(unittest.TestCase):
                 (self.pkgs / p).rename(self.pkgs / (p + ".away"))
                 r = self.run_script()
                 self.assertNotEqual(r.returncode, 0)
-                self.assertIn(p.split("-4.")[0].split("-0.")[0].split("-39.")[0].split("-0.56")[0], r.stderr)
+                self.assertIn(f"package {re.sub(r'-[0-9].*', '', p)} not found", r.stderr)
                 (self.pkgs / (p + ".away")).rename(self.pkgs / p)
 
     def test_refuses_a_drive_without_the_raytone_root(self):
@@ -209,6 +210,34 @@ class InstallThorOmarchyTests(unittest.TestCase):
         r = self.run_script("--write", "--confirm-serial", SERIAL)
         self.assertNotEqual(r.returncode, 0)
         self.assertFalse(any(c.startswith("omarchy-provision-user") for c in self.chroot("nvidia")))
+
+    def test_the_greeter_knows_the_user(self):
+        # Omarchy's greeter is password-only: it logs in userModel.lastUser, which the ISO seeds
+        # (omarchy-iso configure_login). Without it SDDM authenticates the user "" and fails.
+        self.write()
+        login = (self.target / "etc" / "sddm.conf.d" / "99-omarchy-login.conf").read_text()
+        self.assertIn("RememberLastUser=true", login)
+        self.assertIn("RememberLastSession=true", login)
+        state = (self.target / "var" / "lib" / "sddm" / "state.conf").read_text()
+        self.assertEqual(state, "[Last]\nSession=omarchy.desktop\nUser=nvidia\n")
+        self.assertIn("chown sddm:sddm /var/lib/sddm /var/lib/sddm/state.conf", self.chroot())
+        self.assertFalse((self.target / "etc" / "sddm.conf.d" / "autologin.conf").exists())
+
+    def test_wifi_profiles_follow_the_device_whatever_its_name(self):
+        # Omarchy's aarch64 dependency iwd ships 80-iwd.link (NamePolicy=keep kernel), so the Wi-Fi
+        # device is wlan0 on Omarchy, not wlP1p1s0 as on the profiles copied from JetPack.
+        nm = self.target / "etc" / "NetworkManager" / "system-connections"
+        nm.mkdir(parents=True)
+        wifi = "[connection]\nid=home\ntype=wifi\ninterface-name=wlP1p1s0\n\n[wifi]\nssid=home\n"
+        wired = "[connection]\nid=lan\ntype=ethernet\ninterface-name=enP2p1s0\n"
+        (nm / "home.nmconnection").write_text(wifi)
+        (nm / "lan.nmconnection").write_text(wired)
+        (nm / "home.nmconnection").chmod(0o600)
+        self.write()
+        self.assertEqual((nm / "home.nmconnection").read_text(),
+                         "[connection]\nid=home\ntype=wifi\n\n[wifi]\nssid=home\n")
+        self.assertEqual((nm / "home.nmconnection").stat().st_mode & 0o777, 0o600)
+        self.assertEqual((nm / "lan.nmconnection").read_text(), wired)
 
     def test_install_is_verified(self):
         for unit in ("sddm", "raytone-deadman.timer"):
