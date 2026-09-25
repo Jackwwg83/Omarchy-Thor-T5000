@@ -64,3 +64,26 @@ Other findings:
 - The clock started at 2026-09-11 and jumped to the right time during boot; without network, timesyncd could not sync. To look at before pacman needs signatures.
 - `nvethernet … failed to connect PHY` for eth1–3 also happens on JetPack (board wiring), so it is not a regression.
 - `archlinux-keyring` refresh failed three times (no network), as expected.
+
+## Step 4, second Arch boot: with `raytone-thor-leetop-nic` (15:36)
+
+After step 4 the drive got the vendor NIC package (Codex: go) and networkd was masked, so the root
+installer ran once more (`install-root-3.log`). Checks over SSH: `arch-boot-2-checks.txt`.
+
+| Check | Result |
+| --- | --- |
+| SSH over Wi-Fi 28 s after boot (192.168.1.35, `wlP1p1s0`); internet reachable | real data |
+| `8852be` and `r8125` loaded on NVIDIA's kernel; Wi-Fi firmware from `/etc/firmware`, version 0.29.29.5, as on JetPack; `enP2p1s0` present (no cable) | real data |
+| Root `/dev/sda2` rw,noatime after the `ro` boot; no swap; nothing from the NVMe mounted | real data |
+| **efivarfs mounted `ro`** | real data |
+| `nvidia-smi`: NVIDIA Thor 595.78, 45 °C; `nvidia`/`nvidia-drm` from `updates/opensource-gpu-disp` (OpenRM), as on JetPack | real data |
+| 120 W mode; nvfancontrol and the thermal guard active; fan 1718 rpm | real data |
+| Hardware watchdog 2 min (runtime and reboot); `kernel.sysrq=1`; NTP synchronized | real data |
+| No failed units; 52 units masked, among them tpm2-setup, pcrlogin@, networkd, firstboot | real data |
+| Dead-man timer armed for 15:57:24 | real data |
+
+To fix later:
+- NVIDIA's `99-tegra-devices.rules` references a `debug` group that the drive lacks. Add it to raytone-thor-core's sysusers.
+- `rtk_btusb` finds no `rtl8852bu_fw` or `rtl8852bu_config`. The Bluetooth firmware, like the drivers, is presumably vendor-installed on JetPack (Slice 2, Bluetooth).
+- `ina238 2-0044: error configuring the device: -121` and `tegra-soc-hwpm … Invalid IP`: compare with JetPack.
+- The early-boot clock starts at the last saved time until NTP syncs.
