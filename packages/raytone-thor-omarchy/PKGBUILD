@@ -13,6 +13,8 @@ backup=(etc/sddm.conf.d/20-raytone-thor.conf)
 # makepkg only takes local sources from this directory's top level, so the files are listed here and
 # copied from $startdir (this directory) by package().
 _files=(raytone-omarchy-apply-system
+        raytone-thor-pacman-restore
+        skel/.config/omarchy/hooks/pre-refresh-pacman.d/10-raytone-thor
         overrides/UPSTREAM.sha256
         overrides/install/config/snapper.sh
         overrides/install/hardware/nvidia.sh
@@ -26,6 +28,9 @@ package() {
   local s=$startdir o=$pkgdir/usr/share/raytone-thor/omarchy-overrides f
   for f in "${_files[@]}"; do [[ -f $s/$f ]] || { echo "missing $f" >&2; return 1; }; done
   install -Dm755 "$s/raytone-omarchy-apply-system" "$pkgdir/usr/bin/raytone-omarchy-apply-system"
+  install -Dm755 "$s/raytone-thor-pacman-restore" "$pkgdir/usr/bin/raytone-thor-pacman-restore"
+  install -Dm644 "$s/skel/.config/omarchy/hooks/pre-refresh-pacman.d/10-raytone-thor" \
+    "$pkgdir/etc/skel/.config/omarchy/hooks/pre-refresh-pacman.d/10-raytone-thor"
   install -Dm644 "$s/overrides/UPSTREAM.sha256" "$o/UPSTREAM.sha256"
   (cd "$s/overrides" && find install -type f -exec install -Dm644 {} "$o/{}" \;)
   install -Dm644 "$s/pacman/pacman.conf" "$pkgdir/usr/share/raytone-thor/pacman/pacman.conf"

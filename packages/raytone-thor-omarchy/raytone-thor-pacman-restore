@@ -1,0 +1,14 @@
+#!/bin/bash
+# Put the Thor's pacman.conf and mirrorlist back (Arch Linux ARM, the port's repository first,
+# Omarchy's aarch64 repository last). Run as root by the pre-refresh-pacman hook: upstream's
+# omarchy-refresh-pacman, which omarchy-channel-set also runs, copies its x86_64 templates first.
+set -euo pipefail
+etc=${RAYTONE_ETC:-/etc}
+templates=${RAYTONE_PACMAN_TEMPLATES:-/usr/share/raytone-thor/pacman}
+[[ -f $templates/pacman.conf && -f $templates/mirrorlist ]] || {
+  echo "raytone-thor-pacman-restore: no templates in $templates" >&2
+  exit 1
+}
+install -m 0644 "$templates/pacman.conf" "$etc/pacman.conf"
+install -m 0644 "$templates/mirrorlist" "$etc/pacman.d/mirrorlist"
+echo "Jetson AGX Thor: restored the aarch64 pacman.conf and mirrorlist (Omarchy repository: edge/aarch64)"
