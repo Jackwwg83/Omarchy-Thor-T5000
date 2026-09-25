@@ -15,8 +15,10 @@
 #      drive's [raytone-thor] repository at /var/lib/raytone/repo.
 #   2. pacman.conf and mirrorlist: the Thor templates (repository order: port, Arch Linux ARM,
 #      Omarchy aarch64). Omarchy's signing key is fetched and locally signed.
-#   3. The Thor graphics stack and Omarchy, then Omarchy's base package list, read from the installed
-#      omarchy package, with manifests/omarchy-arm-substitutions applied.
+#   3. What Omarchy's ISO adds to Omarchy's packages, in its order (manifests/omarchy-iso-packages:
+#      bootstrap tools, PipeWire audio), then the Thor graphics stack and Omarchy, then Omarchy's
+#      base package list, read from the installed omarchy package, with
+#      manifests/omarchy-arm-substitutions applied.
 #   4. raytone-omarchy-apply-system --install-user NAME --first-install (upstream's system setup with
 #      the Thor overrides; the firewall override keeps SSH and mDNS open and enables UFW last).
 #   5. NAME already exists (install-thor-root.sh), so it gets /etc/skel the way upstream's
@@ -70,9 +72,11 @@ HOST_ETC=${RAYTONE_HOST_ETC:-/etc}
 SIGNING=${RAYTONE_SIGNING_HOME:-$HOME/raytone/signing}
 TEMPLATES=$HERE/../packages/raytone-thor-omarchy/pacman
 SUBSTITUTIONS=$HERE/../manifests/omarchy-arm-substitutions
+ISO_PACKAGES=$HERE/../manifests/omarchy-iso-packages
 OMARCHY_KEY=40DFB630FF42BCFFB047046CF0134EE680CAC571
 ROOT_DEV=${dev}2
 [[ -f $TEMPLATES/pacman.conf && -f $TEMPLATES/mirrorlist ]] || die "no pacman templates in $TEMPLATES"
+[[ -f $ISO_PACKAGES ]] || die "no $ISO_PACKAGES"
 
 if ((!write)); then
   identity
@@ -119,6 +123,13 @@ in_target pacman-key --lsign-key "$OMARCHY_KEY"
 
 # 3. The Thor graphics stack and Omarchy, then Omarchy's own base list.
 pac -Syu --noconfirm
+# First, as Omarchy's ISO does: its bootstrap set and archinstall's PipeWire audio, before Omarchy's
+# own packages, so a `jack` dependency later resolves to pipewire-jack (jack2 conflicts with it).
+ISO_PKGS=()
+while read -r name _; do
+  [[ -z $name || $name == \#* ]] || ISO_PKGS+=("$name")
+done < "$ISO_PACKAGES"
+pac -S --noconfirm --needed "${ISO_PKGS[@]}"
 pac -S --noconfirm --needed raytone-thor-graphics hyprland omarchy omarchy-settings raytone-thor-omarchy
 base=$MNT/usr/share/omarchy/install/omarchy-base.packages
 [[ -f $base ]] || die "no $base after installing omarchy"
@@ -143,6 +154,12 @@ as_user() {
 as_user cp -af --backup=numbered /etc/skel/. "/home/$user/" || die "copying /etc/skel into /home/$user failed"
 as_user omarchy-provision-user --force --first-install || die "omarchy-provision-user failed"
 as_user raytone-thor-menu-extension || die "hiding the Thor-incompatible menu entries failed"
+# As archinstall's PipeWire audio setup does for each user.
+wants=/home/$user/.config/systemd/user/default.target.wants
+as_user mkdir -p "$wants"
+for u in pipewire-pulse.service pipewire-pulse.socket; do
+  as_user ln -sf "/usr/lib/systemd/user/$u" "$wants/$u"
+done
 
 # 5b. What Omarchy's ISO does after setup (omarchy-iso configure_login, unencrypted): the greeter is
 # password-only and logs in SDDM's last user, so seed it. No autologin: SDDM stays the auth screen.

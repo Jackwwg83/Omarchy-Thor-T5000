@@ -174,12 +174,32 @@ class InstallThorOmarchyTests(unittest.TestCase):
 
     def test_base_list_comes_from_the_omarchy_package_with_arm_substitutions(self):
         self.write()
-        installs = [c for c in self.chroot() if c.startswith("pacman -S ")]
-        base = installs[-1].split()
+        base = next(c for c in self.chroot() if c.startswith("pacman -S ") and "omarchy-nvim" in c).split()
         for pkg in ("chromium", "neovim", "omarchy-nvim", "sddm"):
             self.assertIn(pkg, base)
         for pkg in ("nvim", "vi", "obs-studio", "#"):
             self.assertNotIn(pkg, base)
+
+    def test_what_omarchys_iso_adds_is_installed_too(self):
+        # Omarchy's base list has wireplumber but not PipeWire's ALSA plugin: without the ISO's
+        # audio packages WirePlumber finds no sound card
+        self.write()
+        iso = [c for c in self.chroot() if c.startswith("pacman -S ") and "pipewire-alsa" in c]
+        self.assertEqual(len(iso), 1, self.chroot())
+        for pkg in ("base-devel", "pipewire-pulse", "pipewire-jack", "gst-plugin-pipewire", "libpulse"):
+            self.assertIn(pkg, iso[0].split())
+        for pkg in ("limine", "efibootmgr", "zram-generator", "#"):
+            self.assertNotIn(pkg, iso[0].split())
+        # the ISO's order: audio before Omarchy and its base list, so a `jack` dependency (ffmpeg,
+        # mpv) resolves to pipewire-jack, not jack2, which conflicts with it
+        self.assertLess(self.chroot().index(iso[0]), self.index("pacman -S --noconfirm --needed raytone-thor-graphics"))
+
+    def test_the_user_gets_pipewire_pulse_as_archinstall_links_it(self):
+        self.write()
+        for unit in ("pipewire-pulse.service", "pipewire-pulse.socket"):
+            with self.subTest(unit=unit):
+                self.assertIn(f"ln -sf /usr/lib/systemd/user/{unit} /home/nvidia/.config/systemd/user/default.target.wants/{unit}",
+                              self.chroot("nvidia"))
 
     def test_upstream_pacman_guard_is_allowed_for_the_installer(self):
         self.write()
