@@ -13,7 +13,7 @@ SERIAL = "2797824271339930"
 SIZE = 248145510400
 HASH = "$6$saltsalt$" + "x" * 40
 PKGS = ("raytone-thor-linux-6.8.12.l4t39.2.1-1-aarch64.pkg.tar.xz", "raytone-thor-firmware-39.2.1-1-aarch64.pkg.tar.xz",
-        "raytone-thor-core-39.2.1-1-aarch64.pkg.tar.xz")
+        "raytone-thor-core-39.2.1-1-aarch64.pkg.tar.xz", "raytone-thor-leetop-nic-2026.09.18-1-aarch64.pkg.tar.xz")
 
 STUB = textwrap.dedent("""\
     #!/bin/bash
@@ -61,7 +61,8 @@ STUB = textwrap.dedent("""\
           for n in systemd-tpm2-setup.service systemd-tpm2-clear.service systemd-pcrlogin@.service systemd-pcrextend.socket \
                    systemd-pcrlock-make-policy.service systemd-factory-reset.socket systemd-factory-reset-request.service \
                    factory-reset.target systemd-hibernate-clear.service systemd-boot-random-seed.service \
-                   systemd-bless-boot.service sshd.service systemd-journald.service; do
+                   systemd-bless-boot.service systemd-networkd.service systemd-networkd.socket \\
+                   systemd-networkd-wait-online.service sshd.service systemd-journald.service; do
             touch "$u/$n"
           done
         fi ;;
@@ -143,6 +144,19 @@ class InstallThorRootTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("dry run", r.stdout)
         self.assertFalse([c for c in self.calls() if c.startswith(("mount", "chroot"))])
+
+    def test_refuses_without_the_vendor_network_drivers(self):
+        (self.pkgs / PKGS[3]).unlink()
+        r = self.run_script()
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("raytone-thor-leetop-nic", r.stderr)
+
+    def test_networkd_is_masked_so_networkmanager_alone_manages_the_network(self):
+        self.write()
+        u = self.target / "etc/systemd/system"
+        for unit in ("systemd-networkd.service", "systemd-networkd.socket", "systemd-networkd-wait-online.service"):
+            with self.subTest(unit=unit):
+                self.assertEqual(os.readlink(u / unit), "/dev/null")
 
     def test_refuses_missing_packages(self):
         (self.pkgs / PKGS[2]).unlink()

@@ -59,7 +59,8 @@ resolve_usb_disk
 [[ -f $tarball ]] || die "rootfs tarball '$tarball' not found"
 [[ $(sha256sum "$tarball" | cut -d' ' -f1) == "$tarball_sha" ]] || die "rootfs tarball sha256 does not match $tarball_sha"
 PKG_FILES=()
-for p in raytone-thor-firmware raytone-thor-linux raytone-thor-core; do
+# raytone-thor-leetop-nic: the vendor's Wi-Fi and 2.5GbE drivers; without it the drive has no network.
+for p in raytone-thor-firmware raytone-thor-linux raytone-thor-core raytone-thor-leetop-nic; do
   f=$(compgen -G "$pkgdir/$p-[0-9]*.pkg.tar.*" | grep -v '\.sig$' | sort -V | tail -1) || true
   [[ -n $f ]] || die "package $p not found in '$pkgdir'"
   PKG_FILES+=("$f")
@@ -77,8 +78,10 @@ UNITS=(sshd NetworkManager avahi-daemon systemd-timesyncd raytone-deadman.timer 
        raytone-thermal-guard nv-load-display-modules nvfancontrol nvpmodel nvpower)
 # Masked by name wherever the target has them: units that can write UEFI variables or TPM state.
 MASK_RE='^(systemd-(pcr|tpm2-|factory-reset|bless-boot|hibernate|boot-(update|random-seed|clear-sysfail))|factory-reset)'
-# Masked always: interactive first-boot setup, partition changes, sleep (JetPack known issue 5525468).
+# Masked always: interactive first-boot setup, partition changes, sleep (JetPack known issue 5525468),
+# and systemd-networkd, which the Arch Linux ARM image enables next to NetworkManager.
 MASK_ALWAYS=(systemd-firstboot.service systemd-repart.service
+             systemd-networkd.service systemd-networkd.socket systemd-networkd-wait-online.service
              sleep.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target)
 DROP_CAPS=-sys_module,-sys_rawio,-sys_boot,-sys_time,-bpf,-perfmon,-mac_admin,-mac_override,-syslog,-wake_alarm,-sys_admin,-sys_ptrace,-mknod,-kill
 KVER=6.8.12-1021-tegra
