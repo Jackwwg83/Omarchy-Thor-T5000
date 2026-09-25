@@ -1,0 +1,17 @@
+{
+  "comment": "Upstream sources the Thor port builds from. Bump with the procedure in docs/UPSTREAM-SYNC.md; recipes under packages/omarchy* are verbatim copies of omarchy-pkgs at the pinned commit.",
+  "omarchy": {
+    "repo": "https://github.com/omacom/omarchy",
+    "tag": "v4.0.4",
+    "commit": "c668141e9c42b13c80c9ca4ea108e11708c5e8a5"
+  },
+  "omarchy-pkgs": {
+    "repo": "https://github.com/omacom/omarchy-pkgs",
+    "commit": "ed6a3869c73a19bedb579515841d6804b9411242",
+    "recipes": {
+      "pkgbuilds/omarchy/PKGBUILD": "b2bebdde144895088ce817eacc4e1dec450f84ba1142a67886cd47517fdcbdba",
+      "pkgbuilds/omarchy-settings/PKGBUILD": "3526bed3610c4252a47b4f75dc04fbd0604762fb9799cf2fc091b6dd5d96349a",
+      "pkgbuilds/omarchy-settings/omarchy-settings.install": "5714b40b50d8a50e8f04f2f8379c138339bbd8a7bf72c3e5afeb194740240fde"
+    }
+  }
+}
