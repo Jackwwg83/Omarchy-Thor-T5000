@@ -1,7 +1,7 @@
 # RaytoneOS: NVIDIA L4T R39.2.1 firmware for Jetson AGX Thor (GPU system processor, display, engines).
 pkgname=raytone-thor-firmware
 pkgver=39.2.1
-pkgrel=2
+pkgrel=3
 pkgdesc='NVIDIA L4T R39.2.1 firmware for Jetson AGX Thor'
 arch=(aarch64)
 url='https://developer.nvidia.com/embedded/jetson-linux'
@@ -39,6 +39,9 @@ _repack() { # _repack EXCLUDE_REGEX... : lay the trees out for Arch, report kept
 package() {
   _stage
   # Orin (ga10b, tegra234) firmware is not needed on Thor and may overlap linux-firmware.
-  _repack '^/lib/firmware/nvidia/(ga10b|tegra234)/' '^/lib/firmware/[^/]*t234[^/]*$'
+  # NVIDIA's bluetooth.service drop-in runs Ubuntu's /usr/libexec/bluetooth/bluetoothd (not there on
+  # Arch: status=203/EXEC) and disables BlueZ's audio plugins, which Omarchy's Bluetooth audio needs.
+  _repack '^/lib/firmware/nvidia/(ga10b|tegra234)/' '^/lib/firmware/[^/]*t234[^/]*$' \
+          '^/(usr/)?lib/systemd/system/bluetooth\.service\.d/nv-bluetooth-service\.conf$'
   test -d "$pkgdir/usr/lib/firmware/nvidia/595.78"
 }
