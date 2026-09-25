@@ -42,16 +42,27 @@ repo_sign() {
   gpgs --yes -u "$fpr" --detach-sign "$1"
 }
 
-# repo_publish FILE...: sign and copy each package, then add exactly these to the database.
+# repo_publish [--verify] FILE...: sign and copy each package, then add exactly these to the database.
 # Older files stay in the repository for rollback; the database entry is the one published last,
 # so only the files named here are added (a glob would add them in name order, -10 before -9).
+# --verify: first check every package against the drive's own pacman keyring, from a staging copy
+# in the chroot's tmpfs, so a package the drive would reject leaves the repository unchanged.
 repo_publish() {
-  local f names=() added=()
+  local verify=0 f names=() added=() stage=/tmp/raytone-publish
+  [[ ${1:-} == --verify ]] && { verify=1; shift; }
   for f in "$@"; do names+=("${f##*/}" "${f##*/}.sig"); done
   repo_no_links raytone-thor.gpg "${names[@]}"
+  for f in "$@"; do repo_sign "$f"; done
+  if ((verify)); then
+    mkdir -p "$MNT$stage"
+    for f in "$@"; do
+      cp -f "$f" "$f.sig" "$MNT$stage/"
+      in_target pacman-key --verify "$stage/${f##*/}.sig" "$stage/${f##*/}" > /dev/null 2>&1 ||
+        die "${f##*/} does not verify with the drive's keyring; the repository is unchanged"
+    done
+  fi
   mkdir -p "$MNT$REPO"
   for f in "$@"; do
-    repo_sign "$f"
     cp -f "$f" "$f.sig" "$MNT$REPO/"
     added+=("$REPO/${f##*/}")
   done

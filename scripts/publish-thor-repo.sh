@@ -75,13 +75,13 @@ mount -t ext4 -o noatime "$ROOT_DEV" "$MNT"
   die "$ROOT_DEV has no [raytone-thor] repository; run install-thor-omarchy.sh first"
 repo_signing_key
 thor_chroot_mount
-in_target pacman-key --list-keys "$fpr" > /dev/null 2>&1 ||
-  die "the drive's pacman does not trust the signing key $fpr (install-thor-omarchy.sh lsigns it)"
-repo_publish "${PKG_FILES[@]}"
-for f in "${PKG_FILES[@]}"; do
-  in_target pacman-key --verify "$REPO/${f##*/}.sig" "$REPO/${f##*/}" > /dev/null 2>&1 ||
-    die "${f##*/} does not verify with the drive's keyring"
-done
+# pacman accepts a signature when its key is valid in pacman's keyring: full (f) or ultimate (u),
+# which install-thor-omarchy.sh's pacman-key --lsign-key gives the repository key.
+validity=$(in_target gpg --homedir /etc/pacman.d/gnupg --batch --list-keys --with-colons "$fpr" 2>/dev/null |
+  awk -F: '$1 == "pub" {print $2; exit}')
+[[ $validity == [fu] ]] ||
+  die "the drive's pacman does not trust the signing key $fpr (validity '${validity:-none}'; install-thor-omarchy.sh lsigns it)"
+repo_publish --verify "${PKG_FILES[@]}"
 
 listed=$(tar -tzf "$MNT$REPO/$REPO_DB" | sed 's|^\./||; s|/.*||' | sort -u)
 for f in "${PKG_FILES[@]}"; do

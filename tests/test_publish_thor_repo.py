@@ -40,8 +40,10 @@ STUB = textwrap.dedent("""\
         shift  # the root
         if [[ $1 == /usr/bin/env ]]; then shift; [[ $1 == -i ]] && shift; while [[ $1 == *=* ]]; do shift; done; fi
         echo "in-chroot $*" >> "$STATE/calls"
-        if [[ $1 == pacman-key && $2 == --verify && -f $STATE/untrusted ]]; then exit 1; fi
-        if [[ $1 == pacman-key && $2 == --list-keys && -f $STATE/untrusted ]]; then exit 1; fi
+        if [[ $1 == pacman-key && $2 == --verify && -f $STATE/bad-verify ]]; then exit 1; fi
+        if [[ $1 == gpg && " $* " == *" --list-keys "* ]]; then
+          if [[ -f $STATE/untrusted ]]; then echo "pub:-:255:22:X:1:::-:::scESC::::::23::0:"; else echo "pub:f:255:22:X:1:::-:::scESC::::::23::0:"; fi
+        fi
         if [[ $1 == repo-add && ! -f $STATE/repo-add-noop ]]; then
           # model repo-add: one directory per package (name-version-release) in a gzip tar
           shift 2; db=$TARGET$1; shift
@@ -180,11 +182,23 @@ class PublishThorRepoTests(unittest.TestCase):
         self.assertIn("trust", r.stderr)
         self.assertFalse([c for c in self.chroot() if c.startswith("repo-add")])
 
-    def test_each_published_package_verifies_with_the_drives_keyring(self):
+    def test_each_package_verifies_with_the_drives_keyring_before_the_repository_changes(self):
         self.write()
+        calls = self.chroot()
+        add = next(i for i, c in enumerate(calls) if c.startswith("repo-add"))
         for p in self.new:
-            self.assertIn(f"pacman-key --verify /var/lib/raytone/repo/{p.name}.sig /var/lib/raytone/repo/{p.name}",
-                          self.chroot())
+            v = calls.index(f"pacman-key --verify /tmp/raytone-publish/{p.name}.sig /tmp/raytone-publish/{p.name}")
+            self.assertLess(v, add)
+
+    def test_a_package_that_does_not_verify_changes_nothing(self):
+        (self.state / "bad-verify").touch()
+        before = sorted(p.name for p in (self.target / "var" / "lib" / "raytone" / "repo").iterdir())
+        db = (self.target / DB).read_bytes()
+        r = self.run_script("--write", "--confirm-serial", SERIAL)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("verify", r.stderr)
+        self.assertEqual(sorted(p.name for p in (self.target / "var" / "lib" / "raytone" / "repo").iterdir()), before)
+        self.assertEqual((self.target / DB).read_bytes(), db)
 
     def test_links_on_the_drive_cannot_redirect_host_writes(self):
         # the host (JetPack, root) copies into the drive's repository: a link there must not reach it
