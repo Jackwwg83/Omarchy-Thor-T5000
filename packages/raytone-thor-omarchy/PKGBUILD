@@ -10,7 +10,9 @@ url='https://github.com/Jackwwg83/Omarchy-Thor-T5000'
 license=(MIT)
 depends=(omarchy raytone-thor-graphics hyprland sddm uwsm)
 backup=(etc/sddm.conf.d/20-raytone-thor.conf)
-source=(raytone-omarchy-apply-system
+# makepkg only takes local sources from this directory's top level, so the files are listed here and
+# copied from $startdir (this directory) by package().
+_files=(raytone-omarchy-apply-system
         overrides/UPSTREAM.sha256
         overrides/install/config/snapper.sh
         overrides/install/hardware/nvidia.sh
@@ -19,17 +21,15 @@ source=(raytone-omarchy-apply-system
         pacman/mirrorlist
         uwsm-env.d-20-raytone-thor
         sddm-20-raytone-thor.conf)
-sha256sums=(SKIP SKIP SKIP SKIP SKIP SKIP SKIP SKIP SKIP)
 
 package() {
-  local o=$pkgdir/usr/share/raytone-thor/omarchy-overrides
-  install -Dm755 "$srcdir/raytone-omarchy-apply-system" "$pkgdir/usr/bin/raytone-omarchy-apply-system"
-  install -Dm644 "$srcdir/UPSTREAM.sha256" "$o/UPSTREAM.sha256"
-  install -Dm644 "$srcdir/snapper.sh" "$o/install/config/snapper.sh"
-  install -Dm644 "$srcdir/nvidia.sh" "$o/install/hardware/nvidia.sh"
-  install -Dm644 "$srcdir/pacman.sh" "$o/install/post-install/pacman.sh"
-  install -Dm644 "$srcdir/pacman.conf" "$pkgdir/usr/share/raytone-thor/pacman/pacman.conf"
-  install -Dm644 "$srcdir/mirrorlist" "$pkgdir/usr/share/raytone-thor/pacman/mirrorlist"
-  install -Dm644 "$srcdir/uwsm-env.d-20-raytone-thor" "$pkgdir/usr/share/uwsm/env.d/20-raytone-thor"
-  install -Dm644 "$srcdir/sddm-20-raytone-thor.conf" "$pkgdir/etc/sddm.conf.d/20-raytone-thor.conf"
+  local s=$startdir o=$pkgdir/usr/share/raytone-thor/omarchy-overrides f
+  for f in "${_files[@]}"; do [[ -f $s/$f ]] || { echo "missing $f" >&2; return 1; }; done
+  install -Dm755 "$s/raytone-omarchy-apply-system" "$pkgdir/usr/bin/raytone-omarchy-apply-system"
+  install -Dm644 "$s/overrides/UPSTREAM.sha256" "$o/UPSTREAM.sha256"
+  (cd "$s/overrides" && find install -type f -exec install -Dm644 {} "$o/{}" \;)
+  install -Dm644 "$s/pacman/pacman.conf" "$pkgdir/usr/share/raytone-thor/pacman/pacman.conf"
+  install -Dm644 "$s/pacman/mirrorlist" "$pkgdir/usr/share/raytone-thor/pacman/mirrorlist"
+  install -Dm644 "$s/uwsm-env.d-20-raytone-thor" "$pkgdir/usr/share/uwsm/env.d/20-raytone-thor"
+  install -Dm644 "$s/sddm-20-raytone-thor.conf" "$pkgdir/etc/sddm.conf.d/20-raytone-thor.conf"
 }

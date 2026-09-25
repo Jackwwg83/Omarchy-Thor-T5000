@@ -14,11 +14,11 @@ DISPLAY = "/dev/dri/by-path/platform-8808c00000.display-card"
 
 class PackageTests(unittest.TestCase):
     def pkgbuild_sources(self):
-        out = subprocess.run(["bash", "-c", f"source {PKG}/PKGBUILD; printf '%s\\n' \"${{source[@]}}\""],
+        out = subprocess.run(["bash", "-c", f"source {PKG}/PKGBUILD; printf '%s\\n' \"${{_files[@]}}\""],
                              capture_output=True, text=True, check=True).stdout.split()
         return out
 
-    def test_every_source_exists(self):
+    def test_every_packaged_file_exists(self):
         for src in self.pkgbuild_sources():
             with self.subTest(src=src):
                 self.assertTrue((PKG / src).exists(), src)
