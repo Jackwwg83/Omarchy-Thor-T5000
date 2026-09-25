@@ -41,6 +41,10 @@ STUB = textwrap.dedent("""\
         if [[ $1 == /usr/bin/env ]]; then shift; [[ $1 == -i ]] && shift; while [[ $1 == *=* ]]; do shift; done; fi
         echo "in-chroot $*" >> "$STATE/calls"
         if [[ $1 == pacman-key && $2 == --verify && -f $STATE/bad-verify ]]; then exit 1; fi
+        # a build overwriting the source package while the staged copy is checked
+        if [[ $1 == pacman-key && $2 == --verify && -f $STATE/rebuild-during-verify ]]; then
+          for f in "$PKGDIR"/*.pkg.tar.xz; do echo rebuilt > "$f"; done
+        fi
         if [[ $1 == gpg && " $* " == *" --list-keys "* ]]; then
           if [[ -f $STATE/untrusted ]]; then echo "pub:-:255:22:X:1:::-:::scESC::::::23::0:"; else echo "pub:f:255:22:X:1:::-:::scESC::::::23::0:"; fi
         fi
@@ -96,7 +100,7 @@ class PublishThorRepoTests(unittest.TestCase):
         env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}", STATE=str(self.state), TARGET=str(self.target),
                    SERIAL=SERIAL, SIZE=str(SIZE), FPR=FPR, RAYTONE_SYS=str(self.sys), RAYTONE_SKIP_ROOT_CHECK="1",
                    RAYTONE_NO_UNSHARE="1", RAYTONE_TARGET_MOUNT=str(self.target), RAYTONE_HOST_ETC=str(t / "hostetc"),
-                   RAYTONE_UDEV_RULES=str(t / "rules"), RAYTONE_SIGNING_HOME=str(self.gnupg))
+                   RAYTONE_UDEV_RULES=str(t / "rules"), RAYTONE_SIGNING_HOME=str(self.gnupg), PKGDIR=str(self.pkgs))
         files = [str(f) for f in (self.new if files is None else files)]
         return subprocess.run(["bash", str(SCRIPT), "--disk", str(self.link), "--serial", SERIAL, *args, *files],
                               env=env, capture_output=True, text=True)
@@ -189,6 +193,13 @@ class PublishThorRepoTests(unittest.TestCase):
         for p in self.new:
             v = calls.index(f"pacman-key --verify /tmp/raytone-publish/{p.name}.sig /tmp/raytone-publish/{p.name}")
             self.assertLess(v, add)
+
+    def test_what_is_published_is_what_was_verified(self):
+        (self.state / "rebuild-during-verify").touch()
+        self.write()
+        repo = self.target / "var" / "lib" / "raytone" / "repo"
+        for p in self.new:
+            self.assertEqual((repo / p.name).read_bytes(), b"pkg")
 
     def test_a_package_that_does_not_verify_changes_nothing(self):
         (self.state / "bad-verify").touch()

@@ -48,22 +48,24 @@ repo_sign() {
 # --verify: first check every package against the drive's own pacman keyring, from a staging copy
 # in the chroot's tmpfs, so a package the drive would reject leaves the repository unchanged.
 repo_publish() {
-  local verify=0 f names=() added=() stage=/tmp/raytone-publish
+  local verify=0 f src names=() added=() stage=/tmp/raytone-publish
   [[ ${1:-} == --verify ]] && { verify=1; shift; }
   for f in "$@"; do names+=("${f##*/}" "${f##*/}.sig"); done
   repo_no_links raytone-thor.gpg "${names[@]}"
   for f in "$@"; do repo_sign "$f"; done
   if ((verify)); then
     mkdir -p "$MNT$stage"
+    for f in "$@"; do cp -f "$f" "$f.sig" "$MNT$stage/"; done
     for f in "$@"; do
-      cp -f "$f" "$f.sig" "$MNT$stage/"
       in_target pacman-key --verify "$stage/${f##*/}.sig" "$stage/${f##*/}" > /dev/null 2>&1 ||
         die "${f##*/} does not verify with the drive's keyring; the repository is unchanged"
     done
   fi
   mkdir -p "$MNT$REPO"
   for f in "$@"; do
-    cp -f "$f" "$f.sig" "$MNT$REPO/"
+    src=$f
+    ((verify)) && src=$MNT$stage/${f##*/}  # publish the copy that verified, not a file a build may replace
+    cp -f "$src" "$src.sig" "$MNT$REPO/"
     added+=("$REPO/${f##*/}")
   done
   gpgs --export "$fpr" > "$MNT$REPO/raytone-thor.gpg"
