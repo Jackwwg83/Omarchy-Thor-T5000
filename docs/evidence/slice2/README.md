@@ -46,3 +46,17 @@ upstream's `omarchy-screensaver` (it exits on keyboard input or loss of focus), 
 - raytone-thor-omarchy 0.1.0-2 (which only adds the nft dependency) is committed, not yet built.
 - Do not click the "Update System" notification until Slice 2.2 gates `omarchy-update` and
   `omarchy-refresh-pacman` (Codex review, round 2).
+
+## Slice 2.2, first night (2026-09-26, owner away; no reboot)
+
+| Item | State | Evidence |
+|---|---|---|
+| `omarchy-refresh-pacman` / channel switch keep the Thor's pacman.conf | **real data** | upstream x86_64 template copied over `/etc/pacman.conf`, then `omarchy-hook pre-refresh-pacman`: `cmp` with the Thor template passes, multilib 1 → 0 (sync step not run) |
+| `omarchy-update` | not run (Codex: no-go until a fresh backup and a real update to install) | `checkupdates`: 0 pending; 106/106 migrations done; post-update hooks only send invitations; `pacman -Qtdq` empty; `pacman -Qem` lists raytone-thor-nft-modules (installed with `pacman -U`, not yet in `[raytone-thor]`) |
+| Publishing to `[raytone-thor]` from JetPack | code (tests) | `scripts/publish-thor-repo.sh` |
+| Following upstream | code (tests) + real check | `scripts/upstream-bump.py` against GitHub: `up to date: Omarchy v4.0.4` |
+| Menu: 24 entries hidden | **real data** (file); look not yet checked | [menu.md](menu.md); the live file parses with Omarchy's JSONC rules to 24 overrides |
+| PipeWire audio | **real data** for devices; no sound test yet | WirePlumber had no ALSA plugin (`api.alsa.enum.udev could not be loaded`): the ISO layer's `pipewire-alsa`, `pipewire-pulse`, `pipewire-jack` (replacing jack2) etc. installed; now 2 devices, HDA and APE |
+| HDMI audio | **empty** | HDA's four HDMI outputs "not available": ELD `monitor_present 0`, `eld_valid 0`, although the monitor's EDID has a CEA audio data block (LPCM). The display driver does not hand the ELD to the HDA codec; compare on JetPack. The default sink is APE's analog stereo, which likely goes nowhere |
+| Bluetooth | bluetoothd **real data**; adapter **empty** | `bluetooth.service` failed with 203/EXEC: NVIDIA's drop-in runs `/usr/libexec/bluetooth/bluetoothd` (fixed in raytone-thor-firmware 39.2.1-3; masked on the drive meanwhile by an empty `/etc/systemd/system/bluetooth.service.d/nv-bluetooth-service.conf`, to remove after the update). `rtk_btusb` (bda:b85b, RTL8852BU) fails: `Direct firmware load for rtl8852bu_fw failed with error -2`; the vendor files are on JetPack |
+| `debug` group | code (tests) | raytone-thor-core 39.2.1-3 |

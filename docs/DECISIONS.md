@@ -247,3 +247,26 @@ JetPack's interface name, and `nft_limit` missing from NVIDIA's kernel. Decision
 (owner, option A of three): build the missing nf_tables module from NVIDIA's own R39.2.1 kernel
 source rather than editing ufw's rules or switching ufw to iptables-legacy, so upstream's rules stay
 unmodified. Evidence: [slice2/README.md](evidence/slice2/README.md).
+
+## 2026-09-26 — Slice 2.2, first night (owner away, no reboot)
+
+- **omarchy-update is left as upstream wrote it.** It only syncs against the configured repositories;
+  what rewrites pacman.conf is `omarchy-refresh-pacman` (also behind `omarchy-channel-set`), and its
+  `pre-refresh-pacman` hook puts the Thor's configuration back before the sync. The first real update
+  waits for a fresh backup and something to update (Codex: no-go before that).
+- **What Omarchy's ISO adds is part of "real Omarchy".** Omarchy's base list leaves the audio stack to
+  archinstall (PipeWire's ALSA plugin, pipewire-pulse), as it leaves SDDM's last user to the ISO; the
+  installer mirrors those ISO steps (`manifests/omarchy-iso-packages`, sources noted), in the ISO's
+  order. zram is not taken: a swap device would show Hibernate, which the Thor cannot do.
+- **The menu hides 24 entries**, each with evidence (`docs/evidence/slice2/menu.md`), through the
+  user's extension file, the only one Omarchy's shell reads; users that exist before an upgrade get it
+  and the pacman hook from the package's scriptlet (`raytone-thor-user-setup`).
+- **Bluetooth runs BlueZ as Arch and Omarchy expect**: NVIDIA's drop-in (Ubuntu path, audio plugins
+  off) is dropped from raytone-thor-firmware. The RTL8852BU adapter needs the vendor firmware the
+  JetPack install uses, pinned like the Wi-Fi firmware (next attended session).
+- **Codex review of the night's commits** found two P1 and three P2 issues, all fixed and confirmed
+  in re-review: host writes through links on the drive, the hook missing for existing users, an
+  unmatched menu marker deleting the user's entries, stale or untrusted signatures (now: key validity
+  in the drive's keyring, every package verified from a staging copy before the repository changes,
+  the verified copy is what gets published), and upstream-bump ignoring recipe-only changes and
+  closing the gate on rerun.
