@@ -1,0 +1,1 @@
+root=PARTUUID=1b3479b0-b4c2-4a1b-8b81-86d864b3944e rw rootwait rootfstype=ext4 mminit_loglevel=4 earlycon=tegra_utc,mmio32,0xc5a0000 console=ttyUTC0,115200 firmware_class.path=/etc/firmware fbcon=map:0 efi=runtime audit=1 audit_backlog_limit=8192 swiotlb=2048 video=efifb:off console=tty0 bl_prof_dataptr=6225920@0x2004010000 bl_prof_ro_ptr=65536@0x2004000000 

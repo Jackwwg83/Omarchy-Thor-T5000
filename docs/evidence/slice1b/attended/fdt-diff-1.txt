@@ -1,0 +1,6 @@
+8091,8092c8091,8092
+< 		linux,uefi-mmap-size = <0x1fb0>;
+< 		linux,uefi-mmap-start = <0x1f 0xb3f6c040>;
+---
+> 		linux,uefi-mmap-size = <0x2010>;
+> 		linux,uefi-mmap-start = <0x1f 0xaf422040>;
