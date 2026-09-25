@@ -15,9 +15,8 @@ Procedure: end of `docs/DECISIONS.md`. The raw device trees stay on the Thor (th
 | UEFI boot options: the firmware replaced its own auto-created USB option `Boot0004` (device path `…/USB(5,0)/USB(2,0)`) with `Boot0005` (`…/USB(5,0)/USB(1,0)`) and put it first in BootOrder | real data | `efibootmgr-1.txt` |
 
 The boot-option change was made by the firmware, not by any script: edk2 refreshes its `auto_created_boot_option`
-entries when a removable device's path changes. The drive was moved to another USB-A port during the night,
-and there had been no reboot since, so this boot was the first to see the new path. None of the project's tools
-writes UEFI variables.
+entries when a removable device's path changes. None of the project's tools writes UEFI variables. (A port move
+during the night was the first guess. Step 3 shows the path simply differs from boot to boot; see below.)
 
 ## Step 3: one-shot `jetpack-grub`, JetPack's kernel and initrd loaded by GRUB (14:51)
 
