@@ -135,5 +135,65 @@ class ThorNvidiaTests(unittest.TestCase):
             self.assertNotIn("pacman", calls)
 
 
+def run_override(rel, env_extra, stubs):
+    """Run one override the way upstream's run_logged does (bash -eE) with stubbed commands."""
+    t = pathlib.Path(env_extra["TMP"])
+    (t / "bin").mkdir(exist_ok=True)
+    for name, body in stubs.items():
+        (t / "bin" / name).write_text("#!/bin/bash\n" + f"echo {name} \"$@\" >> {t}/calls\n" + body)
+        (t / "bin" / name).chmod(0o755)
+    env = dict(os.environ, PATH=f"{t}/bin:{os.environ['PATH']}", **env_extra)
+    return subprocess.run(["bash", "-eE", str(OVERRIDES / rel)], env=env, capture_output=True, text=True)
+
+
+class ThorSnapperTests(unittest.TestCase):
+    def test_skips_on_a_non_btrfs_root(self):
+        with tempfile.TemporaryDirectory() as t:
+            r = run_override("install/config/snapper.sh", {"TMP": t},
+                             {"findmnt": "echo ext4\n", "snapper": "", "systemctl": ""})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            calls = pathlib.Path(t, "calls").read_text()
+            self.assertNotIn("snapper ", calls)
+            self.assertNotIn("systemctl", calls)
+
+
+class ThorPacmanTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = pathlib.Path(self.tmp.name)
+        self.etc = t / "etc"
+        (self.etc / "pacman.d").mkdir(parents=True)
+        (self.etc / "pacman.conf").write_text("[multilib]\n")
+        self.install = t / "install"
+        (self.install / "hardware").mkdir(parents=True)
+        (self.install / "hardware" / "pacman.sh").write_text("echo sourced-hardware-pacman >> $TMP/calls\n")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_pacman(self):
+        return run_override("install/post-install/pacman.sh",
+                            {"TMP": self.tmp.name, "RAYTONE_ETC": str(self.etc), "OMARCHY_INSTALL": str(self.install),
+                             "OMARCHY_PATH": self.tmp.name, "RAYTONE_PACMAN_TEMPLATES": str(PKG / "pacman")}, {})
+
+    def test_writes_the_thor_aarch64_config(self):
+        r = self.run_pacman()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        conf = (self.etc / "pacman.conf").read_text()
+        self.assertEqual(conf, (PKG / "pacman" / "pacman.conf").read_text())
+        self.assertEqual((self.etc / "pacman.d" / "mirrorlist").read_text(), (PKG / "pacman" / "mirrorlist").read_text())
+        self.assertIn("sourced-hardware-pacman", pathlib.Path(self.tmp.name, "calls").read_text())
+
+    def test_template_repo_order_and_signatures(self):
+        conf = (PKG / "pacman" / "pacman.conf").read_text()
+        repos = [l.strip()[1:-1] for l in conf.splitlines() if l.strip().startswith("[") and l.strip() != "[options]"]
+        self.assertEqual(repos, ["raytone-thor", "core", "extra", "alarm", "aur", "omarchy"])
+        self.assertNotIn("multilib", conf)
+        self.assertNotIn("TrustAll", conf)
+        self.assertNotIn("SigLevel = Never", conf)
+        self.assertIn("Architecture = aarch64", conf)
+        self.assertIn("https://pkgs.omarchy.org/edge/$arch", conf)
+
+
 if __name__ == "__main__":
     unittest.main()
