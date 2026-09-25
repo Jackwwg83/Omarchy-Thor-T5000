@@ -33,3 +33,34 @@ The firmware gives the drive a different USB device path on each boot: `USB(5,0)
 then `USB(2,0)/USB(1,0)`. It rebuilds its auto-created boot option each time (Boot0004 → 0005 → 0004) and
 keeps it first in BootOrder (`usb-boot-option-paths.txt`). This is the firmware's own variable write, made with
 the drive inserted whatever OS boots next. It does not come from the project and does not affect booting.
+
+## Step 4: first Arch boot, `raytone-arch` (NVIDIA's kernel, no initramfs, `ro` root) (14:59–15:16)
+
+The owner watched the console and ran commands there; the drive's journal was then read from JetPack (read-only mount).
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| GRUB preselected the entry; the kernel booted, mounted the USB root; login prompt on tty1 | real data | owner by eye, photos |
+| Boot marker: NVIDIA's kernel build `#1 SMP PREEMPT Thu Aug 6 21:56:04 PDT 2026`, the entry's command line | real data | `/var/lib/raytone/boots.log` on the drive |
+| `systemd-fsck-root`: `RAYTONE_ROOT: clean`, then remounted read-write per fstab | real data | journal |
+| Hardware watchdog in use: `NVIDIA Tegra186 WDT`, 2-minute timeout | real data | journal |
+| Thermal guard every 30 s: 4 zones read, max 47.2 → 45.8 °C, nvfancontrol active, fan 1672–1720 rpm, `NV Power Mode: 120W` | real data | `/var/lib/raytone/thermal.log` on the drive |
+| `nv-load-display-modules`, `nvpmodel`, `raytone-boot-marker` ran; `sshd`, NetworkManager active | real data | console, journal |
+| PCIe: GPU, RTL8852BE Wi-Fi, RTL8125 2.5GbE, NVMe enumerated; `pcie_tegra264` loaded | real data | `lspci` (photo) |
+| **No Wi-Fi and no 2.5GbE interface**: no driver bound to either card, so no network and no SSH | **failed** | `nmcli device status`, `modprobe rtw89_8852be` → not found |
+| efivarfs read-only | not verified live | — |
+| Dead-man fallback | **skipped** (owner rebooted with `systemctl reboot` at ~15:16) | journal shows a clean shutdown |
+
+Why there is no network: of JetPack's 1,471 module files, exactly three belong to no package. All three
+were added by the vendor: `updates/drivers/net/wireless/realtek/8852be.ko` (the Wi-Fi driver in use,
+Realtek's out-of-tree driver), `updates/drivers/net/ethernet/realtek/r8125/r8125.ko` (the 2.5GbE driver in
+use, Realtek 9.014.01-NAPI), and a second `rtk_btusb.ko` under `kernel/`. NVIDIA's kernel has neither
+`CONFIG_RTW89` nor `CONFIG_R8169`. The vendor also installed uncompressed `rtw89/rtw8852b_fw*.bin` firmware.
+The two drivers' `__versions` tables, 178 and 159 symbols, match NVIDIA's `Module.symvers`
+(`nvidia-l4t-kernel-headers`, `nvidia-l4t-kernel-oot-headers`) exactly: no CRC mismatch, no missing symbol.
+
+Other findings:
+- ALARM's image enables `systemd-networkd` next to NetworkManager (`Failed to start Wait for Network to be Online`). To fix: disable networkd.
+- The clock started at 2026-09-11 and jumped to the right time during boot; without network, timesyncd could not sync. To look at before pacman needs signatures.
+- `nvethernet … failed to connect PHY` for eth1–3 also happens on JetPack (board wiring), so it is not a regression.
+- `archlinux-keyring` refresh failed three times (no network), as expected.
