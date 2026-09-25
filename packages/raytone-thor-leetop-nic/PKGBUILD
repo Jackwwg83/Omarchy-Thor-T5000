@@ -1,0 +1,39 @@
+# RaytoneOS: the network drivers the vendor (Leetop) added to this Jetson AGX Thor's JetPack install:
+# Realtek's out-of-tree rtw89 driver for the RTL8852BE Wi-Fi card and Realtek's r8125 driver
+# (9.014.01-NAPI) for the RTL8125 2.5GbE port. NVIDIA's kernel has neither (no CONFIG_RTW89, no
+# CONFIG_R8169), and no package on JetPack owns these files, so there is nothing to download:
+# the sources are the JetPack files themselves, pinned by sha256. On the Thor they are linked into
+# this directory before the build; they are never committed. Their symbol CRCs match NVIDIA's
+# Module.symvers for 6.8.12-1021-tegra (docs/evidence/slice1b/attended/README.md, step 4).
+#
+#   K=/usr/lib/modules/6.8.12-1021-tegra/updates/drivers/net
+#   ln -s $K/wireless/realtek/8852be.ko $K/ethernet/realtek/r8125/r8125.ko \
+#         /usr/lib/firmware/rtw89/rtw8852b_fw-1.bin /usr/lib/firmware/rtw89/rtw8852b_fw.bin .
+#
+# The Wi-Fi firmware JetPack loads (rtw8852b_fw-1.bin, version 0.29.29.5) differs from
+# linux-firmware-realtek's file of the same name. It goes to /etc/firmware, which the kernel
+# command line searches first (firmware_class.path=/etc/firmware), so the driver gets the firmware
+# it runs with on JetPack and the package does not conflict with linux-firmware-realtek.
+pkgname=raytone-thor-leetop-nic
+pkgver=2026.09.18
+pkgrel=1
+pkgdesc='Vendor (Leetop) RTL8852BE Wi-Fi and RTL8125 2.5GbE drivers for Jetson AGX Thor, from its JetPack install'
+arch=(aarch64)
+url='https://www.realtek.com'
+license=('GPL-2.0-only OR BSD-3-Clause' GPL-2.0-only LicenseRef-Realtek-firmware)
+depends=(raytone-thor-linux)
+options=(!strip !debug)
+source=(8852be.ko r8125.ko rtw8852b_fw-1.bin rtw8852b_fw.bin)
+sha256sums=('5bece7e38e33eb8e4e85d2ef3cf84c4db3514d3f96d02806e5d290040d5133bd'
+            'c9b097b0c2cc603db756f2f0c09e98d0d43748121f7b014bd6885cdbc170ac4e'
+            '2dc9f2fb587219ddace6120c4bf0543e4918ee0396b60ee8d0a6dcd690fb4b12'
+            '5b9c224ae014e0aeade8701412d820e213c8880e08615b3905dba89659f21baf')
+_kver=6.8.12-1021-tegra
+
+package() {
+  local net=$pkgdir/usr/lib/modules/$_kver/updates/drivers/net
+  install -Dm644 8852be.ko "$net/wireless/realtek/8852be.ko"
+  install -Dm644 r8125.ko "$net/ethernet/realtek/r8125/r8125.ko"
+  install -Dm644 rtw8852b_fw-1.bin "$pkgdir/etc/firmware/rtw89/rtw8852b_fw-1.bin"
+  install -Dm644 rtw8852b_fw.bin "$pkgdir/etc/firmware/rtw89/rtw8852b_fw.bin"
+}
