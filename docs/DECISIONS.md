@@ -229,3 +229,21 @@ GRUB loading JetPack's own kernel and initrd directly, L4TLauncher never runs, s
 and JetPack boots normally: GDM, no failed units, `nvidia-smi`. The device tree is identical apart from
 `/chosen`. Decision: the Arch entries do not carry `bl_prof_*` (`thor_boot.cmdline` drops them, as it already
 did). Evidence: [attended/README.md](evidence/slice1b/attended/README.md), step 3.
+
+## 2026-09-25 — Slice 2: upstream Omarchy 4.0.4 with a thin Thor layer (consult point 6)
+
+Omarchy is installed from upstream's own recipes (omarchy-pkgs, pinned to v4.0.4), unpatched, and set up
+by upstream's `omarchy-apply-system` with four hash-gated overrides (nvidia, snapper, post-install pacman,
+firewall). The installer runs from JetPack in a namespace chroot, as Omarchy's ISO does with
+arch-chroot, with network and module capabilities dropped and `/proc/sys` read-only, so upstream's
+firewall step cannot touch JetPack's live firewall. Codex round 1 raised the host firewall, the ISO's
+x86_64 Node path in `provision-user`, the missing `/etc/skel` for an existing user, and the
+refresh-pacman/update bypass; the first three were fixed, the last is deferred to Slice 2.2. Round 2:
+go, with "do not click the update notification before 2.2".
+
+First boot found three faults that neither the stub tests nor the reviews caught (Codex had listed
+"a real UFW integration test" as optional): the greeter's empty user, the Wi-Fi profile bound to
+JetPack's interface name, and `nft_limit` missing from NVIDIA's kernel. Decision for the firewall
+(owner, option A of three): build the missing nf_tables module from NVIDIA's own R39.2.1 kernel
+source rather than editing ufw's rules or switching ufw to iptables-legacy, so upstream's rules stay
+unmodified. Evidence: [slice2/README.md](evidence/slice2/README.md).
