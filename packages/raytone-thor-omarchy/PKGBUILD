@@ -3,12 +3,12 @@
 # overrides (see raytone-omarchy-apply-system and overrides/UPSTREAM.sha256).
 pkgname=raytone-thor-omarchy
 pkgver=0.1.0
-pkgrel=1
+pkgrel=2
 pkgdesc='Jetson AGX Thor layer for Omarchy: display device, pacman repositories, install overrides'
 arch=(any)
 url='https://github.com/Jackwwg83/Omarchy-Thor-T5000'
 license=(MIT)
-depends=(omarchy raytone-thor-graphics hyprland sddm uwsm)
+depends=(omarchy raytone-thor-graphics raytone-thor-nft-modules hyprland sddm uwsm)
 backup=(etc/sddm.conf.d/20-raytone-thor.conf)
 # makepkg only takes local sources from this directory's top level, so the files are listed here and
 # copied from $startdir (this directory) by package().
