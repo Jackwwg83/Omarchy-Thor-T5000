@@ -1,0 +1,167 @@
+#!/bin/bash
+# Install upstream Omarchy with the Jetson AGX Thor layer on the Thor USB drive's Arch root.
+#
+#   install-thor-omarchy.sh --disk /dev/disk/by-id/usb-... --serial S --packages DIR --user NAME \
+#       [--write --confirm-serial S]
+#
+# Runs on JetPack as root, like install-thor-root.sh (which must have installed the drive's root
+# first), in the same namespace chroot (lib/thor-chroot.sh). This is how Omarchy's own ISO installs:
+# omarchy-apply-system and omarchy-provision-user run in a chroot of the target, and Omarchy's
+# firewall step only edits files there, never the running kernel's firewall.
+#
+#   1. The port's packages in DIR (omarchy, omarchy-settings, raytone-thor-omarchy,
+#      raytone-thor-graphics, hyprland; any others are added too) are signed with a local key
+#      (GNUPGHOME=~/raytone/signing, created if missing, never leaves the Thor's NVMe) and become the
+#      drive's [raytone-thor] repository at /var/lib/raytone/repo.
+#   2. pacman.conf and mirrorlist: the Thor templates (repository order: port, Arch Linux ARM,
+#      Omarchy aarch64). Omarchy's signing key is fetched and locally signed.
+#   3. The Thor graphics stack and Omarchy, then Omarchy's base package list, read from the installed
+#      omarchy package, with manifests/omarchy-arm-substitutions applied.
+#   4. raytone-omarchy-apply-system --install-user NAME --first-install (upstream's system setup with
+#      the Thor overrides), then omarchy-provision-user --force --first-install as NAME.
+#   5. Omarchy's firewall denies all incoming traffic from the next boot on; SSH (22/tcp) and mDNS
+#      (5353/udp) are allowed so the drive stays reachable.
+#   6. Checks: packages, SDDM and the bring-up units enabled, firewall rules, pacman.conf.
+#
+# A dry run unless --write. Tests: tests/test_install_thor_omarchy.py (RAYTONE_* variables exist for them).
+set -euo pipefail
+
+HERE=$(dirname "$(readlink -f "$0")")
+ORIG_ARGS=("$@")
+die() { echo "install-thor-omarchy: $*" >&2; exit 1; }
+# shellcheck source=lib/usb.sh
+source "$HERE/lib/usb.sh"
+# shellcheck source=lib/thor-chroot.sh
+source "$HERE/lib/thor-chroot.sh"
+
+disk='' serial='' write=0 confirm='' pkgdir='' user='' dev=''
+while (($#)); do
+  case $1 in
+    --disk) disk=${2:-}; shift 2 ;;
+    --serial) serial=${2:-}; shift 2 ;;
+    --write) write=1; shift ;;
+    --confirm-serial) confirm=${2:-}; shift 2 ;;
+    --packages) pkgdir=${2:-}; shift 2 ;;
+    --user) user=${2:-}; shift 2 ;;
+    *) die "unknown argument $1" ;;
+  esac
+done
+resolve_usb_disk
+[[ $user =~ ^[a-z_][a-z0-9_-]*$ ]] || die "--user NAME is required"
+[[ -d $pkgdir ]] || die "--packages DIR is required"
+
+REQUIRED=(omarchy omarchy-settings raytone-thor-omarchy raytone-thor-graphics hyprland)
+for p in "${REQUIRED[@]}"; do
+  compgen -G "$pkgdir/$p-[0-9]*.pkg.tar.*" | grep -qE '\.pkg\.tar\.(xz|zst)$' || die "package $p not found in '$pkgdir'"
+done
+mapfile -t PKG_FILES < <(compgen -G "$pkgdir/*.pkg.tar.*" | grep -E '\.pkg\.tar\.(xz|zst)$' | sort)
+
+MNT=${RAYTONE_TARGET_MOUNT:-/mnt/raytone-target}
+HOST_ETC=${RAYTONE_HOST_ETC:-/etc}
+SIGNING=${RAYTONE_SIGNING_HOME:-$HOME/raytone/signing}
+TEMPLATES=$HERE/../packages/raytone-thor-omarchy/pacman
+SUBSTITUTIONS=$HERE/../manifests/omarchy-arm-substitutions
+OMARCHY_KEY=40DFB630FF42BCFFB047046CF0134EE680CAC571
+ROOT_DEV=${dev}2
+REPO=/var/lib/raytone/repo
+[[ -f $TEMPLATES/pacman.conf && -f $TEMPLATES/mirrorlist ]] || die "no pacman templates in $TEMPLATES"
+
+if ((!write)); then
+  identity
+  not_in_use
+  check_layout
+  echo "target: $ROOT_DEV (RAYTONE_ROOT on $disk)"
+  echo "repository: ${PKG_FILES[*]##*/}"
+  echo "then: Omarchy base list from the omarchy package, apply-system with the Thor overrides, provision $user"
+  echo "dry run: nothing written. Add --write --confirm-serial $serial."
+  exit 0
+fi
+[[ $confirm == "$serial" ]] || die "--confirm-serial must repeat the disk serial before anything is written"
+[[ $EUID -eq 0 || ${RAYTONE_SKIP_ROOT_CHECK:-} == 1 ]] || die "must run as root to write"
+if [[ ${RAYTONE_IN_NS:-} != 1 && ${RAYTONE_NO_UNSHARE:-} != 1 ]]; then
+  exec unshare --mount --pid --fork --propagation private -- env RAYTONE_IN_NS=1 bash "$0" "${ORIG_ARGS[@]}"
+fi
+
+cleanup() { umount -R "$MNT" 2>/dev/null || true; restore_automount; }
+trap cleanup EXIT
+suppress_automount
+identity
+not_in_use
+check_layout
+mkdir -p "$MNT"
+mount -t ext4 -o noatime "$ROOT_DEV" "$MNT"
+[[ -f $MNT/.raytone-unpacked && -f $MNT/etc/arch-release ]] ||
+  die "$ROOT_DEV holds no RaytoneOS Arch root; run install-thor-root.sh first"
+thor_chroot_mount
+# Omarchy's libalpm hook refuses direct pacman runs unless this is set.
+pac() { in_target OMARCHY_ALLOW_DIRECT_PACMAN=1 pacman "$@"; }
+
+# 1. Sign and publish the port's packages as the drive's repository.
+install -d -m 0700 "$SIGNING"
+gpgs() { GNUPGHOME=$SIGNING gpg --batch "$@"; }
+fpr=$(gpgs --list-secret-keys --with-colons 2>/dev/null | awk -F: '$1 == "fpr" {print $10; exit}')
+if [[ -z $fpr ]]; then
+  echo "+ creating the local repository signing key in $SIGNING"
+  gpgs --passphrase '' --quick-generate-key 'RaytoneOS Thor local repository' ed25519 sign never
+  fpr=$(gpgs --list-secret-keys --with-colons | awk -F: '$1 == "fpr" {print $10; exit}')
+fi
+[[ $fpr =~ ^[0-9A-F]{40}$ ]] || die "no usable signing key in $SIGNING"
+mkdir -p "$MNT$REPO"
+for f in "${PKG_FILES[@]}"; do
+  [[ -f $f.sig ]] || gpgs --yes -u "$fpr" --detach-sign "$f"
+  cp -f "$f" "$f.sig" "$MNT$REPO/"
+done
+gpgs --export "$fpr" > "$MNT$REPO/raytone-thor.gpg"
+in_target bash -c "shopt -s nullglob; repo-add -q $REPO/raytone-thor.db.tar.gz $REPO/*.pkg.tar.xz $REPO/*.pkg.tar.zst"
+[[ -f $MNT$REPO/raytone-thor.db.tar.gz ]] || die "repo-add did not create the repository"
+
+# 2. Repositories and keys.
+mkdir -p "$MNT/etc/pacman.d"
+install -m 0644 "$TEMPLATES/pacman.conf" "$MNT/etc/pacman.conf"
+install -m 0644 "$TEMPLATES/mirrorlist" "$MNT/etc/pacman.d/mirrorlist"
+in_target pacman-key --add "$REPO/raytone-thor.gpg"
+in_target pacman-key --lsign-key "$fpr"
+in_target pacman-key --recv-keys "$OMARCHY_KEY" --keyserver keys.openpgp.org
+in_target pacman-key --lsign-key "$OMARCHY_KEY"
+
+# 3. The Thor graphics stack and Omarchy, then Omarchy's own base list.
+pac -Syu --noconfirm
+pac -S --noconfirm --needed raytone-thor-graphics hyprland omarchy omarchy-settings raytone-thor-omarchy
+base=$MNT/usr/share/omarchy/install/omarchy-base.packages
+[[ -f $base ]] || die "no $base after installing omarchy"
+BASE_PKGS=()
+while read -r name _; do
+  [[ -z $name || $name == \#* ]] && continue
+  sub=$(awk -v n="$name" '$1 == n {print $2}' "$SUBSTITUTIONS")
+  [[ $sub == - ]] && continue
+  BASE_PKGS+=("${sub:-$name}")
+done < "$base"
+pac -S --noconfirm --needed "${BASE_PKGS[@]}"
+in_target gpgconf --homedir /etc/pacman.d/gnupg --kill all || true
+
+# 4. Omarchy's system setup with the Thor overrides, then the user.
+in_target OMARCHY_ALLOW_DIRECT_PACMAN=1 raytone-omarchy-apply-system --install-user "$user" --first-install ||
+  die "raytone-omarchy-apply-system failed (log: /var/log/omarchy-install.log on the drive)"
+setpriv --no-new-privs --bounding-set "$DROP_CAPS" -- \
+  chroot --userspec="$user:$user" "$MNT" /usr/bin/env -i PATH=/usr/bin HOME="/home/$user" USER="$user" LANG=C.UTF-8 \
+  omarchy-provision-user --force --first-install || die "omarchy-provision-user failed"
+
+# 5. Keep the drive reachable once Omarchy's firewall is active.
+in_target ufw allow 22/tcp
+in_target ufw allow 5353/udp
+
+# 6. Verify.
+in_target pacman -Q omarchy omarchy-settings raytone-thor-omarchy raytone-thor-graphics hyprland > /dev/null ||
+  die "not every package is installed"
+for u in sddm raytone-deadman.timer raytone-thermal-guard; do
+  in_target systemctl is-enabled "$u" > /dev/null || die "unit not enabled: $u"
+done
+for rule in "22/tcp" "5353/udp"; do
+  grep -q "allow $rule" "$MNT/etc/ufw/user.rules" || grep -qE "allow (tcp|udp) ${rule%/*} " "$MNT/etc/ufw/user.rules" ||
+    die "firewall rule missing: $rule"
+done
+cmp -s "$TEMPLATES/pacman.conf" "$MNT/etc/pacman.conf" || die "/etc/pacman.conf is not the Thor template after setup"
+in_target pacman -Q > "$MNT/var/lib/raytone/installed-packages-omarchy.txt" 2>/dev/null || true
+sync
+echo "verified: packages, sddm and bring-up units, firewall rules, pacman.conf"
+echo "installed: Omarchy $(in_target pacman -Q omarchy 2>/dev/null | awk '{print $2}') with the Thor layer on $ROOT_DEV"
