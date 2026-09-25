@@ -2,7 +2,7 @@
 # units, power model, fan control, tools, NVML (nvidia-smi) and NvSci.
 pkgname=raytone-thor-core
 pkgver=39.2.1
-pkgrel=2
+pkgrel=3
 pkgdesc='NVIDIA L4T R39.2.1 base userspace, power and fan control for Jetson AGX Thor'
 arch=(aarch64)
 url='https://developer.nvidia.com/embedded/jetson-linux'
@@ -71,10 +71,12 @@ package() {
   done
   install -d "$pkgdir/etc/ld.so.conf.d" "$pkgdir/usr/lib/sysusers.d"
   echo /usr/lib/raytone-l4t > "$pkgdir/etc/ld.so.conf.d/raytone-l4t.conf"
-  # Groups NVIDIA's init package creates on Ubuntu, used by its udev rules.
+  # Groups NVIDIA's init package creates on Ubuntu, used by its udev rules. debug owns the GPU
+  # debugger and profiler nodes (nvhost-dbg-gpu, nvhost-prof-*): no user is added to it.
   cat > "$pkgdir/usr/lib/sysusers.d/raytone-thor.conf" <<'EOF'
 g trusty - -
 g crypto - -
+g debug - -
 EOF
   # Links resolve on the target system; in the build root they dangle, so check the link itself.
   test -L "$pkgdir/usr/lib/raytone-l4t/libnvidia-rmapi-tegra.so.595.78"
