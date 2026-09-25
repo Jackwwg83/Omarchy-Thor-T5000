@@ -195,5 +195,53 @@ class ThorPacmanTests(unittest.TestCase):
         self.assertIn("https://pkgs.omarchy.org/edge/$arch", conf)
 
 
+class ThorFirewallTests(unittest.TestCase):
+    """Omarchy's rules plus SSH and mDNS, written while UFW stays disabled; enabled only at the very end."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = pathlib.Path(self.tmp.name)
+        self.conf = t / "ufw.conf"
+        self.conf.write_text("# /etc/ufw/ufw.conf\nENABLED=yes\nLOGLEVEL=low\n")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_fw(self, ufw_body=""):
+        # every stub records its call and the ENABLED line at that moment
+        record = f'echo "$(basename $0) $* | $(grep ^ENABLED= {self.conf})" >> {self.tmp.name}/calls\n'
+        return run_override("install/config/firewall.sh", {"TMP": self.tmp.name, "RAYTONE_UFW_CONF": str(self.conf)},
+                            {"ufw": record + ufw_body, "systemctl": record, "ufw-docker": record})
+
+    def calls(self):
+        """Only the lines that record UFW's ENABLED state at the time of each call."""
+        return [c for c in pathlib.Path(self.tmp.name, "calls").read_text().splitlines() if " | " in c]
+
+    def test_rules_are_written_while_disabled_then_enabled_last(self):
+        r = self.run_fw()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        ufw = [c for c in self.calls() if c.startswith("ufw ")]
+        self.assertTrue(ufw)
+        for c in ufw:
+            self.assertTrue(c.endswith("ENABLED=no"), c)
+        joined = "\n".join(ufw)
+        for rule in ("allow 22/tcp", "allow 5353/udp", "allow 53317/udp", "allow 53317/tcp", "default deny incoming"):
+            self.assertIn(rule, joined)
+        self.assertIn("ENABLED=yes", self.conf.read_text())
+        self.assertTrue(any(c.startswith("systemctl enable ufw") for c in self.calls()))
+
+    def test_never_touches_the_running_firewall(self):
+        self.run_fw()
+        for c in self.calls():
+            self.assertNotRegex(c, r"^ufw (enable|reload|--force enable)")
+            self.assertNotRegex(c, r"^systemctl (start|restart|reload)")
+
+    def test_a_failed_rule_leaves_ufw_disabled(self):
+        r = self.run_fw(ufw_body='[[ "$*" == *22/tcp* ]] && exit 1\nexit 0\n')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("ENABLED=no", self.conf.read_text())
+        self.assertFalse(any(c.startswith("systemctl enable ufw") for c in self.calls()))
+
+
 if __name__ == "__main__":
     unittest.main()
