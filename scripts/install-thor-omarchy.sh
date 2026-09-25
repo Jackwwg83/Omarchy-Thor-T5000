@@ -23,6 +23,7 @@
 #      omarchy-reinstall-configs replays it (cp -af, existing files kept as numbered backups), then
 #      omarchy-provision-user --force --first-install in Omarchy's first-boot context
 #      (provision-owner): the default context would take the ISO's offline x86_64 Node tarball.
+#       Then the menu entries that cannot work on the Thor are hidden (raytone-thor-menu-extension).
 #   5b. As Omarchy's ISO does: SDDM remembers NAME (the greeter has no user field), and Wi-Fi
 #       profiles are unbound from JetPack's interface name (Omarchy's iwd dependency keeps wlan0).
 #   6. Checks: packages, SDDM and the bring-up units enabled, UFW enabled with SSH and mDNS allowed,
@@ -141,6 +142,7 @@ as_user() {
 }
 as_user cp -af --backup=numbered /etc/skel/. "/home/$user/" || die "copying /etc/skel into /home/$user failed"
 as_user omarchy-provision-user --force --first-install || die "omarchy-provision-user failed"
+as_user raytone-thor-menu-extension || die "hiding the Thor-incompatible menu entries failed"
 
 # 5b. What Omarchy's ISO does after setup (omarchy-iso configure_login, unencrypted): the greeter is
 # password-only and logs in SDDM's last user, so seed it. No autologin: SDDM stays the auth screen.

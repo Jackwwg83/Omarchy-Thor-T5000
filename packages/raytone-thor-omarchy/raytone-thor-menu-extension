@@ -1,0 +1,37 @@
+#!/bin/bash
+# Hide the Omarchy menu entries that cannot work on the Jetson AGX Thor. Omarchy's shell reads only
+# its defaults and the user's ~/.config/omarchy/extensions/omarchy-menu.jsonc, where reusing an id
+# overrides its fields; so this puts a marked block of {"when":"false"} overrides first in that file
+# (replacing an earlier block), and the user's own entries, after it, still win.
+#
+# The list and the evidence for each entry (packages missing for aarch64, x86_64-only binaries,
+# no DKMS headers, no suspend, no UKI boot, firmware capsules not allowed): docs/evidence/slice2/menu.md.
+set -euo pipefail
+file=${1:-$HOME/.config/omarchy/extensions/omarchy-menu.jsonc}
+ids=(
+  system.suspend
+  install.service.dropbox install.service.spotify install.service.bitwarden
+  install.browser.edge install.terminal.ghostty
+  install.ai.ollama install.ai.lm-studio install.ai.grok-bot install.ai.t3-code install.ai.hermes
+  install.gaming.steam install.gaming.minecraft install.gaming.heroic install.gaming.lutris
+  install.gaming.battlenet install.gaming.geforce-now install.gaming.retroarch install.gaming.xbox-controllers
+  setup.direct-boot update.password.drive style.unlock update.config.plymouth update.firmware
+)
+begin='  // BEGIN raytone-thor: entries that cannot work on Jetson AGX Thor (raytone-thor-menu-extension)'
+end='  // END raytone-thor'
+
+mkdir -p "$(dirname "$file")"
+[[ -f $file ]] || printf '{\n}\n' > "$file"
+grep -q '^[[:space:]]*{[[:space:]]*$' "$file" || { echo "raytone-thor-menu-extension: no opening { line in $file" >&2; exit 1; }
+block=$(printf '%s\n' "$begin"; printf '  "%s": {"when":"false"},\n' "${ids[@]}"; printf '%s' "$end")
+tmp=$(mktemp "$file.XXXXXX")
+BLOCK=$block BEGIN_LINE=$begin END_LINE=$end awk '
+  $0 == ENVIRON["BEGIN_LINE"] { skip = 1; next }
+  skip && $0 == ENVIRON["END_LINE"] { skip = 0; next }
+  skip { next }
+  { print }
+  !done && /^[[:space:]]*\{[[:space:]]*$/ { print ENVIRON["BLOCK"]; done = 1 }
+' "$file" > "$tmp"
+cat "$tmp" > "$file"
+rm -f "$tmp"
+echo "Jetson AGX Thor: ${#ids[@]} menu entries hidden in $file"

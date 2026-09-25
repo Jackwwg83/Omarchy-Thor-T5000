@@ -14,6 +14,7 @@ backup=(etc/sddm.conf.d/20-raytone-thor.conf)
 # copied from $startdir (this directory) by package().
 _files=(raytone-omarchy-apply-system
         raytone-thor-pacman-restore
+        raytone-thor-menu-extension
         skel/.config/omarchy/hooks/pre-refresh-pacman.d/10-raytone-thor
         overrides/UPSTREAM.sha256
         overrides/install/config/snapper.sh
@@ -29,6 +30,7 @@ package() {
   for f in "${_files[@]}"; do [[ -f $s/$f ]] || { echo "missing $f" >&2; return 1; }; done
   install -Dm755 "$s/raytone-omarchy-apply-system" "$pkgdir/usr/bin/raytone-omarchy-apply-system"
   install -Dm755 "$s/raytone-thor-pacman-restore" "$pkgdir/usr/bin/raytone-thor-pacman-restore"
+  install -Dm755 "$s/raytone-thor-menu-extension" "$pkgdir/usr/bin/raytone-thor-menu-extension"
   install -Dm644 "$s/skel/.config/omarchy/hooks/pre-refresh-pacman.d/10-raytone-thor" \
     "$pkgdir/etc/skel/.config/omarchy/hooks/pre-refresh-pacman.d/10-raytone-thor"
   install -Dm644 "$s/overrides/UPSTREAM.sha256" "$o/UPSTREAM.sha256"

@@ -194,6 +194,13 @@ class InstallThorOmarchyTests(unittest.TestCase):
         provision = next(i for i, c in enumerate(user) if c.startswith("omarchy-provision-user --force --first-install"))
         self.assertLess(skel, provision)
 
+    def test_the_menu_hides_what_cannot_work_on_the_thor(self):
+        self.write()
+        user = self.chroot("nvidia")
+        provision = next(i for i, c in enumerate(user) if c.startswith("omarchy-provision-user"))
+        menu = next(i for i, c in enumerate(user) if c == "raytone-thor-menu-extension")
+        self.assertLess(provision, menu)
+
     def test_provisioning_uses_omarchys_first_boot_context_not_the_iso(self):
         # --first-install in the default context means "ISO chroot": an offline x86_64 Node tarball.
         self.write()
