@@ -28,8 +28,8 @@ def sha(b):
 
 
 class FakeUpstream:
-    def __init__(self, tag="v4.0.5", commit=NEW, settings_commit=None, changed=(), files=()):
-        self.tag, self.commit = tag, commit
+    def __init__(self, tag="v4.0.5", commit=NEW, settings_commit=None, changed=(), files=(), pkgrel=1):
+        self.tag, self.commit, self.pkgrel = tag, commit, pkgrel
         self.settings_commit = settings_commit or commit
         self.changed = set(changed)  # gated upstream paths whose content differs at the new commit
         self.files = list(files)     # compare API entries
@@ -44,7 +44,7 @@ class FakeUpstream:
         if repo == "omacom/omarchy-pkgs":
             assert ref == PKGS_NEW
             if path == "pkgbuilds/omarchy/PKGBUILD":
-                return recipe(self.tag, self.commit)
+                return recipe(self.tag, self.commit).replace(b"pkgrel=1", f"pkgrel={self.pkgrel}".encode())
             if path == "pkgbuilds/omarchy-settings/PKGBUILD":
                 return recipe(self.tag, self.settings_commit, "omarchy-settings")
             if path == "pkgbuilds/omarchy-settings/omarchy-settings.install":
@@ -109,10 +109,37 @@ class UpstreamBumpTests(unittest.TestCase):
         self.assertEqual(lock["omarchy-pkgs"]["commit"], PKGS_NEW)
         self.assertEqual(lock["omarchy-pkgs"]["recipes"]["pkgbuilds/omarchy/PKGBUILD"], sha(recipe("v4.0.5", NEW)))
 
+    def pin_to(self, up):
+        # the lock as a previous --write for this fake upstream would have left it
+        lock = self.lock()
+        lock["omarchy"].update(tag=up.tag, commit=up.commit)
+        lock["omarchy-pkgs"]["recipes"] = {p: sha(up.raw("omacom/omarchy-pkgs", PKGS_NEW, p)) for p in bump.RECIPES}
+        (self.root / "manifests" / "upstream-lock.json").write_text(json.dumps(lock))
+
     def test_up_to_date(self):
-        code, out = self.run_bump(FakeUpstream(tag="v4.0.4", commit=OLD), "--write")
+        up = FakeUpstream(tag="v4.0.4", commit=OLD)
+        self.pin_to(up)
+        code, out = self.run_bump(up, "--write")
         self.assertEqual(code, 0)
         self.assertIn("up to date", out)
+
+    def test_a_recipe_change_for_the_same_release_is_followed(self):
+        # upstream repackages (pkgrel) without a new Omarchy commit
+        self.pin_to(FakeUpstream(tag="v4.0.4", commit=OLD))
+        up = FakeUpstream(tag="v4.0.4", commit=OLD, pkgrel=2)
+        code, out = self.run_bump(up, "--write")
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("up to date", out)
+        self.assertIn("pkgbuilds/omarchy/PKGBUILD", out)
+        self.assertIn(b"pkgrel=2", (self.root / "packages" / "omarchy" / "PKGBUILD").read_bytes())
+
+    def test_the_gate_holds_until_it_is_reviewed(self):
+        # after --write the lock names the new release; a rerun must still report the open gate
+        up = FakeUpstream(changed={"install/hardware/nvidia.sh"})
+        self.assertEqual(self.run_bump(up, "--write")[0], 2)
+        code, out = self.run_bump(up)
+        self.assertEqual(code, 2, out)
+        self.assertIn("install/hardware/nvidia.sh", out)
 
     def test_gate_names_every_changed_upstream_file(self):
         up = FakeUpstream(changed={"install/hardware/nvidia.sh", "etc/sddm.conf.d/10-wayland.conf"})

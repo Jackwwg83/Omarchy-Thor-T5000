@@ -78,11 +78,11 @@ def main(argv=None, upstream=None):
         print(f"refused: '{tag}' at '{commit}' is not a stable release (pre-release or bare commit)")
         return 1
     old_tag, old = lock["omarchy"]["tag"], lock["omarchy"]["commit"]
-    if commit == old:
-        print(f"up to date: Omarchy {tag} ({commit})")
-        return 0
-    print(f"Omarchy {old_tag} -> {tag} ({old[:12]} -> {commit[:12]}), omarchy-pkgs {pkgs_commit[:12]}")
+    hashes = {p: hashlib.sha256(d).hexdigest() for p, d in recipes.items()}
+    recipes_changed = [p for p in RECIPES if lock["omarchy-pkgs"].get("recipes", {}).get(p) != hashes[p]]
 
+    # The gate runs every time: after --write the lock names the new release, and it stays open
+    # until each Thor file is reviewed and its .sha256 line updated.
     changed = []
     for gate in GATE_FILES:
         for line in (root / gate).read_text().splitlines():
@@ -91,12 +91,24 @@ def main(argv=None, upstream=None):
             digest, rel = line.split()
             if hashlib.sha256(up.raw("omacom/omarchy", commit, rel)).hexdigest() != digest:
                 changed.append((rel, gate))
+
+    if commit == old and not recipes_changed and not changed:
+        print(f"up to date: Omarchy {tag} ({commit})")
+        return 0
+    if commit != old:
+        print(f"Omarchy {old_tag} -> {tag} ({old[:12]} -> {commit[:12]}), omarchy-pkgs {pkgs_commit[:12]}")
+    else:
+        print(f"Omarchy {tag} ({commit[:12]}), omarchy-pkgs {pkgs_commit[:12]}")
+    if recipes_changed:
+        print("\nRECIPES changed: " + ", ".join(recipes_changed))
+
     print("\nGATE: " + (f"{len(changed)} upstream file(s) changed; review the Thor file for each, then "
                         "update its .sha256 line" if changed else "no overridden or mirrored file changed"))
     for rel, gate in changed:
-        print(f"  {rel}  ({gate.name}) https://github.com/omacom/omarchy/compare/{old}...{commit}")
+        print(f"  {rel}  ({gate.name}) https://github.com/omacom/omarchy/blob/{commit}/{rel}")
 
-    review = [f for f in up.compare("omacom/omarchy", old, commit) if REVIEW.match(f["filename"])]
+    review = [] if commit == old else [f for f in up.compare("omacom/omarchy", old, commit)
+                                       if REVIEW.match(f["filename"])]
     print(f"\nREVIEW: {len(review)} change(s) that can affect the port")
     for f in review:
         print(f"  {f['status']:<9} {f['filename']}")
@@ -106,7 +118,7 @@ def main(argv=None, upstream=None):
             (root / "packages" / p.removeprefix("pkgbuilds/")).write_bytes(data)
         lock["omarchy"].update(tag=tag, commit=commit)
         lock["omarchy-pkgs"]["commit"] = pkgs_commit
-        lock["omarchy-pkgs"]["recipes"] = {p: hashlib.sha256(d).hexdigest() for p, d in recipes.items()}
+        lock["omarchy-pkgs"]["recipes"] = hashes
         lock_path.write_text(json.dumps(lock, indent=2) + "\n")
         print(f"\nwrote: packages/omarchy*, {lock_path.relative_to(root)}; next: docs/UPSTREAM-SYNC.md step 3")
     return 2 if changed else 0
