@@ -19,8 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-This license covers the files in this repository. It does not cover the NVIDIA
-Jetson Linux (L4T) packages the recipes download at build time, the vendor
-drivers a recipe takes from a local JetPack install, or upstream projects the
-recipes build (Hyprland and others); each keeps its own license.
