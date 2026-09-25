@@ -37,6 +37,8 @@ ORIG_ARGS=("$@")
 die() { echo "install-thor-root: $*" >&2; exit 1; }
 # shellcheck source=lib/usb.sh
 source "$HERE/lib/usb.sh"
+# shellcheck source=lib/thor-chroot.sh
+source "$HERE/lib/thor-chroot.sh"
 
 disk='' serial='' write=0 confirm='' tools='' tarball='' tarball_sha='' pkgdir='' user='' dev=''
 while (($#)); do
@@ -83,7 +85,6 @@ MASK_RE='^(systemd-(pcr|tpm2-|factory-reset|bless-boot|hibernate|boot-(update|ra
 MASK_ALWAYS=(systemd-firstboot.service systemd-repart.service
              systemd-networkd.service systemd-networkd.socket systemd-networkd-wait-online.service
              sleep.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target)
-DROP_CAPS=-sys_module,-sys_rawio,-sys_boot,-sys_time,-bpf,-perfmon,-mac_admin,-mac_override,-syslog,-wake_alarm,-sys_admin,-sys_ptrace,-mknod,-kill
 KVER=6.8.12-1021-tegra
 
 # Everything a login on the drive needs is checked before anything is written.
@@ -150,28 +151,8 @@ if [[ ! -f $MNT/.raytone-unpacked ]]; then
 fi
 [[ -f $MNT/etc/arch-release ]] || die "unpacking the rootfs failed"
 
-# 2. A chroot of the drive: fresh proc, read-only sysfs without efivarfs, private /dev, own /run and /tmp.
-bind_node() { touch "$2"; mount --bind "$1" "$2"; }
-mkdir -p "$MNT"/{proc,sys,dev,run,tmp}
-mount -t proc proc "$MNT/proc"
-mount -t sysfs -o ro,nosuid,nodev,noexec sysfs "$MNT/sys"
-mount -t tmpfs -o mode=0755,nosuid tmpfs "$MNT/dev"
-for n in null zero full random urandom tty; do bind_node "/dev/$n" "$MNT/dev/$n"; done
-mkdir -p "$MNT/dev/pts" "$MNT/dev/shm"
-mount -t devpts -o newinstance,ptmxmode=0666 devpts "$MNT/dev/pts"
-ln -sf pts/ptmx "$MNT/dev/ptmx"
-ln -sf /proc/self/fd "$MNT/dev/fd"
-ln -sf /proc/self/fd/0 "$MNT/dev/stdin"
-ln -sf /proc/self/fd/1 "$MNT/dev/stdout"
-ln -sf /proc/self/fd/2 "$MNT/dev/stderr"
-mount -t tmpfs -o mode=0755 tmpfs "$MNT/run"
-mount -t tmpfs -o mode=1777 tmpfs "$MNT/tmp"
-rm -f "$MNT/etc/resolv.conf"
-cat "$HOST_ETC/resolv.conf" > "$MNT/etc/resolv.conf" 2>/dev/null || true
-in_target() {
-  setpriv --no-new-privs --bounding-set "$DROP_CAPS" -- \
-    chroot "$MNT" /usr/bin/env -i PATH=/usr/bin HOME=/root LANG=C.UTF-8 "$@"
-}
+# 2. A chroot of the drive (lib/thor-chroot.sh).
+thor_chroot_mount
 
 # 3. Packages. The mkinitcpio drop-in goes first so the kernel's install hook uses it.
 mkdir -p "$MNT/etc/mkinitcpio.conf.d" "$MNT/etc/pacman.d"
