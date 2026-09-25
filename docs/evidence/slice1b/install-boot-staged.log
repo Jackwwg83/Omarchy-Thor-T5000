@@ -1,0 +1,5 @@
+automount suppressed: ENV{ID_SERIAL_SHORT}=="2797824271339930", ENV{UDISKS_IGNORE}="1", ENV{UDISKS_AUTO}="0"
++ grub-install into /dev/sda1/raytone-staging (the firmware does not look there)
+Installing for arm64-efi platform.
+Installation finished. No error reported.
+staged: EFI/BOOT/BOOTAA64.EFI.staged, boot/grub/grub.cfg, boot/grub/grubenv. The drive is not bootable until 'publish'.

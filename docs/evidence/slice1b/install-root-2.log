@@ -1,0 +1,153 @@
+automount suppressed: ENV{ID_SERIAL_SHORT}=="2797824271339930", ENV{UDISKS_IGNORE}="1", ENV{UDISKS_AUTO}="0"
+==> Appending keys from archlinuxarm.gpg...
+==> Updating trust database...
+gpg: next trustdb check due at 2026-10-26
+:: Synchronizing package databases...
+ core downloading...
+ extra downloading...
+ alarm downloading...
+ aur downloading...
+warning: archlinuxarm-keyring-20240419-2 is up to date -- reinstalling
+resolving dependencies...
+looking for conflicting packages...
+
+Packages (1) archlinuxarm-keyring-20240419-2
+
+Total Installed Size:  0.00 MiB
+Net Upgrade Size:      0.00 MiB
+
+:: Proceed with installation? [Y/n] 
+checking keyring...
+checking package integrity...
+loading package files...
+checking for file conflicts...
+checking available disk space...
+:: Processing package changes...
+reinstalling archlinuxarm-keyring...
+==> Appending keys from archlinuxarm.gpg...
+==> Updating trust database...
+gpg: next trustdb check due at 2026-10-26
+:: Running post-transaction hooks...
+(1/1) Arming ConditionNeedsUpdate...
+:: Starting full system upgrade...
+ there is nothing to do
+warning: networkmanager-1.58.1-1 is up to date -- skipping
+warning: openssh-10.5p1-1 is up to date -- skipping
+warning: sudo-1.9.17.p2-6 is up to date -- skipping
+warning: avahi-1:0.9rc5-1 is up to date -- skipping
+warning: nss-mdns-0.15.1-2 is up to date -- skipping
+warning: linux-firmware-realtek-20260916-1 is up to date -- skipping
+warning: wireless-regdb-2026.09.03-1 is up to date -- skipping
+warning: iw-6.17-1 is up to date -- skipping
+warning: vim-9.2.1046-1 is up to date -- skipping
+warning: less-1:710-1 is up to date -- skipping
+warning: htop-3.5.3-1 is up to date -- skipping
+ there is nothing to do
+loading packages...
+resolving dependencies...
+looking for conflicting packages...
+
+Packages (3) raytone-thor-core-39.2.1-2  raytone-thor-firmware-39.2.1-2  raytone-thor-linux-6.8.12.l4t39.2.1-2
+
+Total Installed Size:  279.63 MiB
+Net Upgrade Size:        0.09 MiB
+
+:: Proceed with installation? [Y/n] 
+checking keyring...
+checking package integrity...
+loading package files...
+checking for file conflicts...
+checking available disk space...
+:: Processing package changes...
+upgrading raytone-thor-firmware...
+upgrading raytone-thor-linux...
+upgrading raytone-thor-core...
+:: Running post-transaction hooks...
+(1/8) Creating system user accounts...
+(2/8) Reloading system manager configuration...
+Failed to check for chroot() environment: Permission denied
+  Skipped: Current root is not booted.
+(3/8) Enqueuing marked services...
+Failed to check for chroot() environment: Permission denied
+  Skipped: Current root is not booted.
+(4/8) Reloading device manager configuration...
+Failed to check for chroot() environment: Permission denied
+  Skipped: Current root is not booted.
+(5/8) Arming ConditionNeedsUpdate...
+(6/8) Loading new kernel modules...
+System has not been booted with systemd as init system (PID 1). Can't operate.
+Failed to connect to system scope bus via local transport: Host is down
+error: command failed to execute correctly
+(7/8) Updating module dependencies...
+(8/8) Updating linux initcpios...
+==> Building image from preset: /etc/mkinitcpio.d/raytone-thor-linux.preset: 'default'
+==> Using default configuration file: '/etc/mkinitcpio.conf'
+  -> -k /boot/vmlinuz-raytone-thor-linux -g /boot/initramfs-raytone-thor-linux.img
+==> Using drop-in configuration file: 'raytone-thor.conf'
+==> Starting build: '6.8.12-1021-tegra'
+  -> Running build hook: [base]
+  -> Running build hook: [udev]
+  -> Running build hook: [modconf]
+  -> Running build hook: [block]
+==> WARNING: Possibly missing firmware for module: 'xhci_pci'
+  -> Running build hook: [filesystems]
+  -> Running build hook: [fsck]
+==> Generating module dependencies
+==> Creating gzip-compressed initcpio image: '/boot/initramfs-raytone-thor-linux.img'
+  -> Early uncompressed CPIO image generation successful
+==> Initcpio image generation successful
+Generating locales...
+  en_US.UTF-8... done
+Generation complete.
+passwd: password changed.
+Initializing machine ID from random generator.
+Created symlink '/etc/systemd/system/systemd-firstboot.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-repart.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/sleep.target' → '/dev/null'.
+Created symlink '/etc/systemd/system/suspend.target' → '/dev/null'.
+Created symlink '/etc/systemd/system/hibernate.target' → '/dev/null'.
+Created symlink '/etc/systemd/system/hybrid-sleep.target' → '/dev/null'.
+Created symlink '/etc/systemd/system/suspend-then-hibernate.target' → '/dev/null'.
+Created symlink '/etc/systemd/system/factory-reset-now.target' → '/dev/null'.
+Created symlink '/etc/systemd/system/factory-reset.target' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-bless-boot.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-boot-clear-sysfail.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-boot-random-seed.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-boot-update.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-factory-reset-complete.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-factory-reset-reboot.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-factory-reset-request.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-factory-reset@.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-factory-reset.socket' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-hibernate-clear.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-hibernate-resume.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-hibernate.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrextend@.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrextend.socket' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrfs-root.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrfs@.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrlock-file-system.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrlock-firmware-code.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrlock-firmware-config.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrlock-machine-id.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrlock-make-policy.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrlock-secureboot-authority.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrlock-secureboot-policy.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrlock@.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrlock.socket' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrlogin@.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrmachine.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrnvdone.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrosseparator.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrphase-factory-reset.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrphase-initrd.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrphase.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrphase-storage-target-mode.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrphase-sysinit.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-pcrproduct.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-tpm2-clear.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-tpm2-setup-early.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-tpm2-setup.service' → '/dev/null'.
+Created symlink '/etc/systemd/system/systemd-tpm2-swtpm.service' → '/dev/null'.
+verified: kernel, modules index, board links, units, sudoers, sshd configuration
+installed: Arch Linux ARM root on /dev/sda2 (PARTUUID=ca5a56c6-4a4b-4e02-8183-ff166514ae3b)

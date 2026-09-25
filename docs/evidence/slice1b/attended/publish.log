@@ -1,0 +1,2 @@
+automount suppressed: ENV{ID_SERIAL_SHORT}=="2797824271339930", ENV{UDISKS_IGNORE}="1", ENV{UDISKS_AUTO}="0"
+published: EFI/BOOT/BOOTAA64.EFI. The firmware boots this drive first (BootOrder) and GRUB's default applies.

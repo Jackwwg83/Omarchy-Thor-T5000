@@ -1,0 +1,2 @@
+automount suppressed: ENV{ID_SERIAL_SHORT}=="2797824271339930", ENV{UDISKS_IGNORE}="1", ENV{UDISKS_AUTO}="0"
+armed: the next boot from the USB drive runs 'jetpack-grub' once, then the default again

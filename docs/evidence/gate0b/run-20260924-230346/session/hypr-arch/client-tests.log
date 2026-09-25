@@ -1,0 +1,36 @@
+[15:04:47] round up, glue=arch manual=0
+[15:04:50] hyprctl-version.txt rc=0
+[15:04:50] monitors.json rc=0
+[15:04:50] REQUIRED ok: monitor reported at 2560x1440
+[15:04:50] systeminfo.txt rc=0
+[15:04:50] wayland-info.txt rc=0
+[15:04:50] syncobj global advertised: 1
+warn: wayland.c:1888: compositor does not implement the xdg-toplevel-icon protocol
+[15:04:52] egl-wayland-client.txt rc=0
+[15:04:53] xwayland-glxinfo.txt rc=0
+[15:04:53] native EGL client renderer: OpenGL core profile renderer: NVIDIA Thor/PCIe
+[15:04:53] Xwayland GLX renderer: OpenGL renderer string: NVIDIA Thor/PCIe
+[15:04:53] REQUIRED ok: native Wayland EGL client on NVIDIA
+[15:04:53] REQUIRED ok: Xwayland GLX on NVIDIA
+[15:05:11] screenshot-1.log rc=0
+[15:05:11] REQUIRED ok: screenshot-1 is a PNG
+[15:05:11] clients.json rc=0
+[15:05:11] drm-state-1.txt rc=0
+[15:05:11] drm-state-2.txt rc=0
+[15:05:12] drm-state-3.txt rc=0
+[15:05:13] dpms-off.txt rc=0
+[15:05:17] dpms-on.txt rc=0
+[15:05:21] INFO dpms dispatch off/on exit 0/0
+[15:05:21] INFO wayland syncobj global advertised: 1
+[15:05:21] screenshot-2.log rc=0
+[15:05:21] REQUIRED ok: screenshot-2 after DPMS is a PNG
+[15:05:21] monitors-after-dpms.json rc=0
+[15:05:21] INFO dpmsStatus after dpms on: "dpmsStatus": true
+[15:05:21] round finished, required failures: 0
+ok
+ err: wayland.c:1769: failed to read events from the Wayland socket: Broken pipe
+ err: wayland.c:2477: failed to roundtrip Wayland display: Broken pipe
+ err: wayland.c:2477: failed to roundtrip Wayland display: Broken pipe
+ err: wayland.c:2477: failed to roundtrip Wayland display: Broken pipe
+warn: terminal.c:2034: slave exited with signal 1 (Hangup)
+ err: wayland.c:2442: failed to flush wayland socket: Broken pipe
