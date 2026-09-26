@@ -41,13 +41,19 @@ class AudioRouteTests(unittest.TestCase):
         r, _ = self.run_script(fail=True)
         self.assertNotEqual(r.returncode, 0)
 
-    def test_runs_when_sound_is_up_and_after_alsa_restore(self):
+    def test_runs_when_the_ape_card_appears(self):
+        # sound.target starts with the first card (the HDA can come first), so udev starts the unit
+        # on the APE's own control device instead (Codex review)
+        rule = (PKG / "70-raytone-thor-audio-route.rules").read_text()
+        self.assertIn('ACTION=="add", SUBSYSTEM=="sound", KERNEL=="controlC*", ATTRS{id}=="APE"', rule)
+        self.assertIn('ENV{SYSTEMD_WANTS}+="raytone-thor-audio-route.service"', rule)
         unit = UNIT.read_text()
         self.assertIn("ExecStart=/usr/lib/raytone/raytone-thor-audio-route", unit)
-        self.assertIn("WantedBy=sound.target", unit)
-        self.assertIn("After=sound.target alsa-restore.service", unit)
+        self.assertIn("After=alsa-restore.service", unit)
+        self.assertNotIn("[Install]", unit)
         text = (PKG / "PKGBUILD").read_text()
-        self.assertIn("usr/lib/systemd/system/sound.target.wants/raytone-thor-audio-route.service", text)
+        self.assertIn("usr/lib/udev/rules.d/70-raytone-thor-audio-route.rules", text)
+        self.assertNotIn("sound.target.wants", text)
 
 
 if __name__ == "__main__":
