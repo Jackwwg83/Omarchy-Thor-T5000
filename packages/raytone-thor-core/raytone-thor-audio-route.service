@@ -1,0 +1,10 @@
+[Unit]
+Description=Jetson AGX Thor: route the APE to the headphone jack (RT5640 on I2S4)
+After=sound.target alsa-restore.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/raytone/raytone-thor-audio-route
+
+[Install]
+WantedBy=sound.target

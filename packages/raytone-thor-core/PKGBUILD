@@ -2,12 +2,12 @@
 # units, power model, fan control, tools, NVML (nvidia-smi) and NvSci.
 pkgname=raytone-thor-core
 pkgver=39.2.1
-pkgrel=3
+pkgrel=4
 pkgdesc='NVIDIA L4T R39.2.1 base userspace, power and fan control for Jetson AGX Thor'
 arch=(aarch64)
 url='https://developer.nvidia.com/embedded/jetson-linux'
 license=(LicenseRef-NVIDIA-L4T)
-depends=(bash raytone-thor-linux raytone-thor-firmware)
+depends=(bash alsa-utils raytone-thor-linux raytone-thor-firmware)
 install=raytone-thor-core.install
 options=(!strip !debug)
 backup=(etc/nvpmodel/nvpmodel_p3834_0008.conf etc/nvpower/nvfancontrol/nvfancontrol_p3834_0008_p4071_0000.conf)
@@ -35,8 +35,8 @@ sha256sums=('277a6fb25f2c06cc2dee6d352bef3abb15929739f396fea1cee70d1dea83008b'
             '7dc851490b23a4bba340786ee9b2fc51793c6c6bcdeca2fe0add5cadc0307423')
 noextract=(nvidia-l4t-core.deb nvidia-l4t-init.deb nvidia-l4t-init-openrm.deb nvidia-l4t-configs.deb nvidia-l4t-nvpmodel.deb nvidia-l4t-nvfancontrol.deb nvidia-l4t-tools.deb nvidia-l4t-nvml.deb nvidia-l4t-nvsci.deb)
 # END l4t sources
-source+=(l4t_repack.py l4t_manifest.py)
-sha256sums+=(SKIP SKIP)
+source+=(l4t_repack.py l4t_manifest.py raytone-thor-audio-route raytone-thor-audio-route.service)
+sha256sums+=(SKIP SKIP SKIP SKIP)
 # Only NVIDIA-named libraries enter the loader path, through /usr/lib/raytone-l4t; NVIDIA's own
 # ld.so.conf.d entry for the whole directory is dropped, so nothing there can shadow Arch's libraries.
 _allow='^(libnv|libcuda|libGLX_nvidia|libEGL_nvidia|libGLES(v1_CM|v2)_nvidia|libtegra|libjetsonpower)'
@@ -78,6 +78,11 @@ g trusty - -
 g crypto - -
 g debug - -
 EOF
+  # The headphone jack: APE routing at boot (see raytone-thor-audio-route), enabled with sound.target.
+  install -Dm755 "$srcdir/raytone-thor-audio-route" "$pkgdir/usr/lib/raytone/raytone-thor-audio-route"
+  install -Dm644 "$srcdir/raytone-thor-audio-route.service" "$pkgdir/usr/lib/systemd/system/raytone-thor-audio-route.service"
+  install -d "$pkgdir/usr/lib/systemd/system/sound.target.wants"
+  ln -s ../raytone-thor-audio-route.service "$pkgdir/usr/lib/systemd/system/sound.target.wants/raytone-thor-audio-route.service"
   # Links resolve on the target system; in the build root they dangle, so check the link itself.
   test -L "$pkgdir/usr/lib/raytone-l4t/libnvidia-rmapi-tegra.so.595.78"
 }
