@@ -69,4 +69,10 @@ Notes:
 
 ## Results
 
-(filled in during the attended run)
+| Step | State | Evidence |
+|---|---|---|
+| 2. publish 0.1.0-9 (from JetPack, 2026-09-27 00:1x) | **real data** | `published: raytone-thor-omarchy-0.1.0-9`; sha256 `b42daaee…29217` on the Mac, JetPack and the drive |
+| 3. `omarchy-update -y`, `mkinitcpio -P` | **real data** | rc=0, `raytone-thor-omarchy 0.1.0-9`, `pacman -Qem` empty; over SSH it needs the session's `OMARCHY_PATH`, `PATH`, `XDG_RUNTIME_DIR`, `DBUS_SESSION_BUS_ADDRESS` (without them: `OMARCHY_PATH: unbound variable` in `omarchy-update-dev`, nothing installed). Initramfs 541 entries, all four modules listed (`lsinitcpio` needs root: the image is 0600) |
+| 4. quiet source | **real data** | greeter only (`c1 sddm seat0 greeter tty1`), SSH sessions |
+| 5.1 `backup` (00:18:48–00:51:38) | **real data** | rc=0; `jetpack-app.tar.gz` 35 848 626 527 bytes (gzip -t, `sha256sum -c` in the script); `extlinux.conf` and `nvme-gpt.sfdisk` hash the same as the manifests and as the live table; APP mounted `ro,norecovery` and unmounted after. Drive: 140 GB free |
+| 5.2 onwards | pending | owner present, 2026-09-27 morning |
