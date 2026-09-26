@@ -204,7 +204,7 @@ case $step in
       planner fstab --in "$MNT/etc/fstab" --root-partuuid "$uuid" > "$work/fstab"
       install -m 0644 "$work/fstab" "$MNT/etc/fstab"
       install -d "$MNT/etc/raytone"
-      printf 'APP_PARTUUID=%s\nKERNEL=%s\n' "$APP_PARTUUID" "$KERNEL_DST" > "$MNT/etc/raytone/nvme-boot.conf"
+      printf 'APP_PARTUUID=%s\nKERNEL=%s\nINITRD=%s\n' "$APP_PARTUUID" "$KERNEL_DST" "$INITRD_DST" > "$MNT/etc/raytone/nvme-boot.conf"
       echo "$uuid" > "$MNT/.raytone-cloned"
       rm -f "$MNT/.raytone-cloning"
       sync
