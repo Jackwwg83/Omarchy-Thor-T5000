@@ -44,6 +44,7 @@ STUB = textwrap.dedent("""\
         sed -n 's|^.*p\\([0-9]*\\) : start= *\\([0-9]*\\), size= *\\([0-9]*\\).*|\\1 \\2 \\3|p' "$STATE/table" |
           while read -r n st sz; do d=$RAYTONE_SYS/class/block/nvme0n1p$n; mkdir -p "$d"; echo "$st" > "$d/start"; echo "$sz" > "$d/size"; done ;;
       lsinitcpio) cat "$STATE/initrd-list" ;;
+      loginctl) echo "c1 961 sddm seat0 1196 greeter tty1 no -"; echo "18 1000 nvidia - 8475 user - no -"; [[ -f $STATE/graphical-session ]] && echo "6 1000 nvidia seat0 2243 user tty2 no -" ; exit 0 ;;
       systemctl)
         case $1 in
           is-active) [[ -f $STATE/active-$3 ]] ;;
@@ -70,7 +71,7 @@ class InstallThorNvmeTests(unittest.TestCase):
         for d in (self.state, self.bin, self.mnt, self.src / "etc", self.src / "boot"):
             d.mkdir(parents=True)
         for tool in ("lsblk", "findmnt", "sfdisk", "e2fsck", "resize2fs", "dumpe2fs", "blkid", "mkfs.ext4", "mount",
-                     "umount", "partx", "uuidgen", "tar", "sha256sum", "rsync", "lsinitcpio", "systemctl"):
+                     "umount", "partx", "uuidgen", "tar", "sha256sum", "rsync", "lsinitcpio", "systemctl", "loginctl"):
             (self.bin / tool).write_text(STUB)
             (self.bin / tool).chmod(0o755)
         dev = t / "dev"
@@ -86,7 +87,8 @@ class InstallThorNvmeTests(unittest.TestCase):
         (self.src / "boot" / "vmlinuz-raytone-thor-linux").write_bytes(b"kernel")
         (self.src / "boot" / "initramfs-raytone-thor-linux.img").write_bytes(b"initramfs")
         (self.state / "p12-partuuid").write_text(UUID.lower() + "\n")
-        (self.state / "initrd-list").write_text("usr/lib/modules/k/updates/drivers/pci/controller/pcie-tegra264.ko\n"
+        (self.state / "initrd-list").write_text("usr/lib/modules/k/kernel/drivers/phy/tegra/phy-tegra194-p2u.ko\n"
+                                                "usr/lib/modules/k/updates/drivers/pci/controller/pcie-tegra264.ko\n"
                                                 "usr/lib/modules/k/kernel/drivers/nvme/host/nvme.ko\n"
                                                 "usr/lib/modules/k/kernel/drivers/nvme/host/nvme-core.ko\n")
         self.sys = t / "sys"
@@ -317,6 +319,35 @@ class InstallThorNvmeTests(unittest.TestCase):
         self.assertEqual((self.mnt / "boot" / "raytone-thor" / "Image").read_bytes(), b"kernel")
         self.assertEqual((self.mnt / "boot" / "raytone-thor" / "initrd").read_bytes(), b"initramfs")
         self.assertFalse(list(self.mnt.rglob("*.raytone-new")))
+
+    def test_a_long_initramfs_listing_is_read_in_full(self):
+        # From Codex's re-review: lsinitcpio | grep -q under pipefail could fail on SIGPIPE
+        self.split_disk()
+        with (self.state / "initrd-list").open("a") as f:
+            for i in range(200000):
+                f.write(f"usr/lib/modules/k/kernel/drivers/misc/filler{i}.ko\n")
+        self.ok("boot-entry")
+
+    def test_boot_entry_needs_the_phy_module_too(self):
+        self.split_disk()
+        (self.state / "initrd-list").write_text("usr/lib/modules/k/updates/drivers/pci/controller/pcie-tegra264.ko\n"
+                                                "usr/lib/modules/k/kernel/drivers/nvme/host/nvme.ko\n"
+                                                "usr/lib/modules/k/kernel/drivers/nvme/host/nvme-core.ko\n")
+        r = self.run_step("boot-entry")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("phy-tegra194-p2u", r.stderr)
+
+    def test_clone_refuses_a_logged_in_user(self):
+        # the source must be quiet (Codex): no desktop or SSH-less user session besides root's
+        self.split_disk()
+        self.ok("create-root")
+        import shutil
+        shutil.rmtree(self.mnt)
+        self.mnt.mkdir()
+        (self.state / "graphical-session").touch()
+        r = self.run_step("clone")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("log out", r.stderr)
 
     def test_boot_entry_needs_an_initramfs_with_the_nvme_modules(self):
         # NVIDIA's kernel has the PCIe controller and NVMe as modules (Codex, Slice 4 review)

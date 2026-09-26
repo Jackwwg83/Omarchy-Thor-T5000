@@ -176,6 +176,9 @@ case $step in
     [[ $(blkid -o value -s TYPE "$(p 12)" 2>/dev/null) == ext4 ]] || die "$(p 12) has no ext4 (run create-root)"
     if ((write)); then
       [[ ! -e $SRC_ROOT/var/lib/pacman/db.lck ]] || die "pacman is running (db.lck); let it finish"
+      # the source must be quiet: nobody logged in at the Thor (the greeter and SSH sessions are fine)
+      [[ -z $(loginctl list-sessions --no-legend | awk '$6 == "user" && $4 != "-"') ]] ||
+        die "someone is logged in at the Thor; log out of the desktop and text consoles first"
       stopped=()
       for s in "${SERVICES[@]}"; do
         if systemctl is-active --quiet "$s"; then systemctl stop "$s"; stopped+=("$s"); fi
@@ -219,8 +222,9 @@ case $step in
     uuid=$(omarchy_uuid)
     [[ -f $KERNEL_SRC ]] || die "no kernel at $KERNEL_SRC"
     [[ -f $INITRD_SRC ]] || die "no initramfs at $INITRD_SRC"
-    for m in pcie-tegra264.ko nvme.ko nvme-core.ko; do
-      lsinitcpio "$INITRD_SRC" | grep -q "/$m" || die "$INITRD_SRC lacks $m (mkinitcpio -P after installing raytone-thor-omarchy)"
+    lsinitcpio "$INITRD_SRC" > "$work/initrd.list" || die "cannot list $INITRD_SRC"
+    for m in pcie-tegra264.ko phy-tegra194-p2u.ko nvme.ko nvme-core.ko; do
+      grep -q "/$m\$" "$work/initrd.list" || die "$INITRD_SRC lacks $m (mkinitcpio -P after installing raytone-thor-omarchy)"
     done
     if ((write)); then
       mount -o noatime "$(p 1)" "$MNT"
