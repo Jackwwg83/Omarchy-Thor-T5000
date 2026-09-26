@@ -46,6 +46,19 @@ For each REVIEW item, in particular:
 
 Then run the whole suite: `python3 -m unittest discover -s tests`.
 
+When any Thor file changed (an override, a `.sha256` line, the menu list, the SDDM mirror), bump
+`pkgrel` in `packages/raytone-thor-omarchy/PKGBUILD`: the new Omarchy needs the Thor layer that was
+reviewed against it, and both are built and published together (steps 3 and 4).
+
+Once every REVIEW item is checked and the GATE is closed:
+`python3 scripts/upstream-bump.py --mark-reviewed` moves the review baseline to the new release
+(until then, reruns keep listing the same REVIEW items).
+
+Watch for upstream's pacman platform guard (omarchy-pkgs added it to omarchy-settings in
+2026-09 as `default/libalpm/hooks/00-omarchy-platform-guard.hook`, conditional until the Omarchy
+source carries it): it refuses packages tagged for another hardware platform, and how it classifies
+the Thor decides whether the port's packages still install.
+
 ## 3. Build on the Thor (JetPack)
 
 Sync the tree to the Thor (`~/raytone-src`), then build in the probe root:
@@ -53,6 +66,7 @@ Sync the tree to the Thor (`~/raytone-src`), then build in the probe root:
 ```sh
 NODEPS=1 spikes/gate0/build-pkg.sh packages/omarchy
 NODEPS=1 spikes/gate0/build-pkg.sh packages/omarchy-settings
+NODEPS=1 spikes/gate0/build-pkg.sh packages/raytone-thor-omarchy   # when its pkgrel moved
 python3 scripts/check_package.py ~/raytone/pkgs/omarchy-X.Y.Z-1-aarch64.pkg.tar.xz ...
 ```
 
@@ -61,11 +75,13 @@ python3 scripts/check_package.py ~/raytone/pkgs/omarchy-X.Y.Z-1-aarch64.pkg.tar.
 1. Back up the drive's root from JetPack first (the drive not mounted; a read-only mount and a
    tar to `~/raytone/backups/` on the NVMe).
 2. Publish:
-   `sudo scripts/publish-thor-repo.sh --disk /dev/disk/by-id/usb-... --serial S --write --confirm-serial S ~/raytone/pkgs/omarchy-X.Y.Z-1-*.pkg.tar.xz ~/raytone/pkgs/omarchy-settings-X.Y.Z-1-*.pkg.tar.xz`
+   `sudo RAYTONE_SIGNING_HOME=/home/nvidia/raytone/signing scripts/publish-thor-repo.sh --disk /dev/disk/by-id/usb-... --serial S --write --confirm-serial S ~/raytone/pkgs/omarchy-X.Y.Z-1-*.pkg.tar.xz ~/raytone/pkgs/omarchy-settings-X.Y.Z-1-*.pkg.tar.xz`
+   plus the rebuilt `raytone-thor-omarchy` when it changed
    It signs with the key the drive already trusts, adds exactly those files to `[raytone-thor]`
    and checks the database lists them. It installs nothing.
 3. Boot the drive and run `omarchy-update`. Answer **no** to removing orphaned packages and to
-   the reboot offer, then check `pacman -Q omarchy omarchy-settings`, `omarchy-version`,
+   the reboot offer (over SSH, `omarchy-update -y` does both), then check
+   `pacman -Q omarchy omarchy-settings raytone-thor-omarchy`, `omarchy-version`,
    `systemctl --failed`, and `cmp /etc/pacman.conf /usr/share/raytone-thor/pacman/pacman.conf`.
 4. Merge the branch with a PR, the evidence in the description.
 
