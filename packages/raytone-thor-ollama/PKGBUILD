@@ -5,19 +5,21 @@
 # The service is Arch ollama's shape, not enabled by the package: systemctl enable --now ollama.
 pkgname=raytone-thor-ollama
 pkgver=0.34.4
-pkgrel=2
+pkgrel=3
 pkgdesc='Ollama (official arm64 build, CUDA 13 backend) for Jetson AGX Thor'
 arch=(aarch64)
 url='https://ollama.com'
-license=(MIT)
+license=(MIT LicenseRef-NVIDIA-CUDA)
 depends=(raytone-thor-core)
 provides=("ollama=$pkgver")
 conflicts=(ollama ollama-cuda)
 options=(!strip !debug)
 source=("https://github.com/ollama/ollama/releases/download/v$pkgver/ollama-linux-arm64.tar.zst"
-        ollama.service ollama.sysusers)
+        "ollama-LICENSE::https://raw.githubusercontent.com/ollama/ollama/v$pkgver/LICENSE"
+        ollama.service ollama.sysusers NOTICE.NVIDIA-CUDA)
 sha256sums=('96f50a1192133028cf4e010d8c333f8af14b1505db6be7b2034c11487e7fd7e6'
-            SKIP SKIP)
+            '5934ed2ce0d15154bcdb9c85203210abac0da4314af34081e36df4599f90b226'
+            SKIP SKIP SKIP)
 noextract=(ollama-linux-arm64.tar.zst)
 
 package() {
@@ -26,10 +28,13 @@ package() {
   rm -rf "$pkgdir/usr/lib/ollama/cuda_v12"
   test -x "$pkgdir/usr/bin/ollama"
   test -d "$pkgdir/usr/lib/ollama/cuda_v13"
-  local l
+  # Licenses: Ollama's own, the bundled components' (each must be there), and NVIDIA's CUDA libraries'.
+  local l lic=$pkgdir/usr/share/licenses/$pkgname
+  install -Dm644 "$srcdir/ollama-LICENSE" "$lic/LICENSE"
   for l in GO_LICENSE LLAMA_CPP_LICENSE LLAMA_CPP_VENDORS_LICENSE CPP_HTTPLIB_LICENSE; do
-    [[ -f $pkgdir/usr/lib/ollama/$l ]] && install -Dm644 "$pkgdir/usr/lib/ollama/$l" "$pkgdir/usr/share/licenses/$pkgname/$l"
+    install -Dm644 "$pkgdir/usr/lib/ollama/$l" "$lic/$l"
   done
+  install -Dm644 "$srcdir/NOTICE.NVIDIA-CUDA" "$lic/NOTICE.NVIDIA-CUDA"
   install -Dm644 "$srcdir/ollama.service" "$pkgdir/usr/lib/systemd/system/ollama.service"
   install -Dm644 "$srcdir/ollama.sysusers" "$pkgdir/usr/lib/sysusers.d/ollama.conf"
 }

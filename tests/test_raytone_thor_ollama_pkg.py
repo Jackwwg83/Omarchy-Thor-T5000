@@ -57,3 +57,27 @@ class OllamaPackageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OllamaLicenseTests(unittest.TestCase):
+    """From Codex's Slice 3 review: the kept cuda_v13 backend bundles NVIDIA's cudart and cuBLAS."""
+
+    def test_licenses_name_nvidias_components(self):
+        licenses = pkgbuild('printf "%s\\n" "${license[@]}"').split()
+        self.assertEqual(licenses, ["MIT", "LicenseRef-NVIDIA-CUDA"])
+        notice = (PKG / "NOTICE.NVIDIA-CUDA").read_text()
+        for part in ("libcudart", "libcublas", "libcublasLt", "https://docs.nvidia.com/cuda/eula/"):
+            self.assertIn(part, notice)
+
+    def test_ollamas_own_license_is_pinned(self):
+        sources = pkgbuild('printf "%s\\n" "${source[@]}"').split()
+        sums = pkgbuild('printf "%s\\n" "${sha256sums[@]}"').split()
+        by = dict(zip(sources, sums))
+        lic = [s for s in sources if s.endswith("/LICENSE")]
+        self.assertEqual(len(lic), 1)
+        self.assertIn("raw.githubusercontent.com/ollama/ollama/v$pkgver/LICENSE".replace("$pkgver", "0.34.4"), lic[0])
+        self.assertEqual(by[lic[0]], "5934ed2ce0d15154bcdb9c85203210abac0da4314af34081e36df4599f90b226")
+
+    def test_missing_upstream_license_files_fail_the_build(self):
+        text = (PKG / "PKGBUILD").read_text()
+        self.assertNotIn("[[ -f $pkgdir/usr/lib/ollama/$l ]] &&", text)
