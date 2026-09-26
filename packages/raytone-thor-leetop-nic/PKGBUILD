@@ -8,26 +8,33 @@
 #
 #   K=/usr/lib/modules/6.8.12-1021-tegra/updates/drivers/net
 #   ln -s $K/wireless/realtek/8852be.ko $K/ethernet/realtek/r8125/r8125.ko \
-#         /usr/lib/firmware/rtw89/rtw8852b_fw-1.bin /usr/lib/firmware/rtw89/rtw8852b_fw.bin .
+#         /usr/lib/firmware/rtw89/rtw8852b_fw-1.bin /usr/lib/firmware/rtw89/rtw8852b_fw.bin \
+#         /lib/firmware/rtl8852bu_fw /lib/firmware/rtl8852bu_config .
 #
 # The Wi-Fi firmware JetPack loads (rtw8852b_fw-1.bin, version 0.29.29.5) differs from
 # linux-firmware-realtek's file of the same name. It goes to /etc/firmware, which the kernel
 # command line searches first (firmware_class.path=/etc/firmware), so the driver gets the firmware
 # it runs with on JetPack and the package does not conflict with linux-firmware-realtek.
+#
+# Bluetooth (the card's RTL8852BU, USB bda:b85b): rtk_btusb asks for rtl8852bu_fw and
+# rtl8852bu_config, which the vendor put in JetPack's /lib/firmware (owned by no deb); they go to
+# /etc/firmware too. linux-firmware's rtl_bt/rtl8852bu_*.bin are other files for the in-tree btusb.
 pkgname=raytone-thor-leetop-nic
-pkgver=2026.09.18
+pkgver=2026.09.26
 pkgrel=1
-pkgdesc='Vendor (Leetop) RTL8852BE Wi-Fi and RTL8125 2.5GbE drivers for Jetson AGX Thor, from its JetPack install'
+pkgdesc='Vendor (Leetop) RTL8852BE Wi-Fi, RTL8852BU Bluetooth firmware and RTL8125 2.5GbE drivers for Jetson AGX Thor, from its JetPack install'
 arch=(aarch64)
 url='https://www.realtek.com'
 license=('GPL-2.0-only OR BSD-3-Clause' GPL-2.0-only LicenseRef-Realtek-firmware)
 depends=(raytone-thor-linux)
 options=(!strip !debug)
-source=(8852be.ko r8125.ko rtw8852b_fw-1.bin rtw8852b_fw.bin)
+source=(8852be.ko r8125.ko rtw8852b_fw-1.bin rtw8852b_fw.bin rtl8852bu_fw rtl8852bu_config)
 sha256sums=('5bece7e38e33eb8e4e85d2ef3cf84c4db3514d3f96d02806e5d290040d5133bd'
             'c9b097b0c2cc603db756f2f0c09e98d0d43748121f7b014bd6885cdbc170ac4e'
             '2dc9f2fb587219ddace6120c4bf0543e4918ee0396b60ee8d0a6dcd690fb4b12'
-            '5b9c224ae014e0aeade8701412d820e213c8880e08615b3905dba89659f21baf')
+            '5b9c224ae014e0aeade8701412d820e213c8880e08615b3905dba89659f21baf'
+            '491eff44dc00b164d13bc9ff3f6bcda8c9d39039284c42292ef059b38771bc63'
+            '2f9968b88d3f434fd67ffa00387fb7eaf0f04e2f9d04e6c5e22f39d359a53c4a')
 _kver=6.8.12-1021-tegra
 
 package() {
@@ -36,4 +43,6 @@ package() {
   install -Dm644 r8125.ko "$net/ethernet/realtek/r8125/r8125.ko"
   install -Dm644 rtw8852b_fw-1.bin "$pkgdir/etc/firmware/rtw89/rtw8852b_fw-1.bin"
   install -Dm644 rtw8852b_fw.bin "$pkgdir/etc/firmware/rtw89/rtw8852b_fw.bin"
+  install -Dm644 rtl8852bu_fw "$pkgdir/etc/firmware/rtl8852bu_fw"
+  install -Dm644 rtl8852bu_config "$pkgdir/etc/firmware/rtl8852bu_config"
 }
