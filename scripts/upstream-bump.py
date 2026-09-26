@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Follow an upstream Omarchy release: docs/UPSTREAM-SYNC.md.
 
-    upstream-bump.py [--pkgs-commit SHA] [--write]
+    upstream-bump.py [--pkgs-commit SHA] [--write | --mark-reviewed]
 
 Reads omarchy-pkgs (its main branch unless --pkgs-commit), whose omarchy and omarchy-settings
 recipes name the Omarchy release they build (_tag, _commit). Refuses pre-releases and recipes that
@@ -12,7 +12,9 @@ disagree. Then:
   REVIEW  upstream changes since the pinned commit that can affect the port: migrations, the
           install tree, the base package list, pacman/update/channel scripts, the menu, SDDM.
 
---write copies the recipes verbatim into packages/ and updates manifests/upstream-lock.json.
+--write copies the recipes verbatim into packages/ and updates manifests/upstream-lock.json; the
+REVIEW list keeps counting from omarchy.reviewed_commit until --mark-reviewed, which a person runs
+once every REVIEW item is checked and the GATE is closed.
 Exit 0: nothing to review in the gate. 2: the gate changed (the pinned-upstream tests fail until
 the overrides are reviewed and the .sha256 files updated). 1: refused.
 """
@@ -60,7 +62,9 @@ def field(recipe, name):
 def main(argv=None, upstream=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--pkgs-commit")
-    ap.add_argument("--write", action="store_true")
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--write", action="store_true")
+    mode.add_argument("--mark-reviewed", action="store_true")
     ap.add_argument("--root", default=str(pathlib.Path(__file__).resolve().parents[1]))
     args = ap.parse_args(argv)
     up = upstream or GitHub()
@@ -78,6 +82,7 @@ def main(argv=None, upstream=None):
         print(f"refused: '{tag}' at '{commit}' is not a stable release (pre-release or bare commit)")
         return 1
     old_tag, old = lock["omarchy"]["tag"], lock["omarchy"]["commit"]
+    reviewed = lock["omarchy"].get("reviewed_commit", old)
     hashes = {p: hashlib.sha256(d).hexdigest() for p, d in recipes.items()}
     recipes_changed = [p for p in RECIPES if lock["omarchy-pkgs"].get("recipes", {}).get(p) != hashes[p]]
 
@@ -92,7 +97,7 @@ def main(argv=None, upstream=None):
             if hashlib.sha256(up.raw("omacom/omarchy", commit, rel)).hexdigest() != digest:
                 changed.append((rel, gate))
 
-    if commit == old and not recipes_changed and not changed:
+    if commit == old and not recipes_changed and not changed and reviewed == commit:
         print(f"up to date: Omarchy {tag} ({commit})")
         return 0
     if commit != old:
@@ -107,13 +112,25 @@ def main(argv=None, upstream=None):
     for rel, gate in changed:
         print(f"  {rel}  ({gate.name}) https://github.com/omacom/omarchy/blob/{commit}/{rel}")
 
-    review = [] if commit == old else [f for f in up.compare("omacom/omarchy", old, commit)
-                                       if REVIEW.match(f["filename"])]
-    print(f"\nREVIEW: {len(review)} change(s) that can affect the port")
+    review = [] if commit == reviewed else [f for f in up.compare("omacom/omarchy", reviewed, commit)
+                                            if REVIEW.match(f["filename"])]
+    print(f"\nREVIEW: {len(review)} change(s) since {reviewed[:12]} that can affect the port")
     for f in review:
         print(f"  {f['status']:<9} {f['filename']}")
 
+    if args.mark_reviewed:
+        if commit != old or recipes_changed:
+            print("\nrefused: --write this release first")
+            return 1
+        if changed:
+            print("\nrefused: the GATE is still open")
+            return 1
+        lock["omarchy"]["reviewed_commit"] = commit
+        lock_path.write_text(json.dumps(lock, indent=2) + "\n")
+        print(f"\nreviewed: {tag} ({commit[:12]})")
+        return 0
     if args.write:
+        lock["omarchy"].setdefault("reviewed_commit", reviewed)
         for p, data in recipes.items():
             (root / "packages" / p.removeprefix("pkgbuilds/")).write_bytes(data)
         lock["omarchy"].update(tag=tag, commit=commit)

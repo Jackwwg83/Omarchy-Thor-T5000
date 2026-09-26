@@ -141,6 +141,38 @@ class UpstreamBumpTests(unittest.TestCase):
         self.assertEqual(code, 2, out)
         self.assertIn("install/hardware/nvidia.sh", out)
 
+    def test_the_review_list_stays_until_it_is_marked_reviewed(self):
+        # --write moves the build to the new commit, not the review baseline (Codex merge review)
+        files = [{"filename": "migrations/1790000000.sh", "status": "added"}]
+        up = FakeUpstream(files=files)
+        self.assertEqual(self.run_bump(up, "--write")[0], 0)
+        code, out = self.run_bump(up)
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("up to date", out)
+        self.assertIn("migrations/1790000000.sh", out.split("REVIEW")[1])
+
+    def test_mark_reviewed_closes_the_review(self):
+        files = [{"filename": "migrations/1790000000.sh", "status": "added"}]
+        up = FakeUpstream(files=files)
+        self.run_bump(up, "--write")
+        self.assertEqual(self.run_bump(up, "--mark-reviewed")[0], 0)
+        self.assertEqual(self.lock()["omarchy"]["reviewed_commit"], NEW)
+        self.pin_to(up)  # the recipes as written
+        lock = self.lock()
+        lock["omarchy"]["reviewed_commit"] = NEW
+        (self.root / "manifests" / "upstream-lock.json").write_text(json.dumps(lock))
+        code, out = self.run_bump(up)
+        self.assertIn("up to date", out)
+
+    def test_mark_reviewed_refuses_an_open_gate_or_an_unwritten_release(self):
+        up = FakeUpstream(changed={"install/hardware/nvidia.sh"})
+        self.assertEqual(self.run_bump(up, "--mark-reviewed")[0], 1)  # not written yet
+        self.run_bump(up, "--write")
+        code, out = self.run_bump(up, "--mark-reviewed")
+        self.assertEqual(code, 1, out)
+        self.assertIn("GATE", out)
+        self.assertNotEqual(self.lock()["omarchy"].get("reviewed_commit"), NEW)
+
     def test_gate_names_every_changed_upstream_file(self):
         up = FakeUpstream(changed={"install/hardware/nvidia.sh", "etc/sddm.conf.d/10-wayland.conf"})
         code, out = self.run_bump(up, "--write")
