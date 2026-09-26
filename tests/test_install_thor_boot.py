@@ -9,7 +9,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "install-thor-boot.sh"
-SERIAL = "2797824271339930"
+SERIAL = "0000000000001234"
 SIZE = 248145510400
 
 STUB = textwrap.dedent("""\

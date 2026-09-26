@@ -9,7 +9,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "install-thor-root.sh"
-SERIAL = "2797824271339930"
+SERIAL = "0000000000001234"
 SIZE = 248145510400
 HASH = "$6$saltsalt$" + "x" * 40
 PKGS = ("raytone-thor-linux-6.8.12.l4t39.2.1-1-aarch64.pkg.tar.xz", "raytone-thor-firmware-39.2.1-1-aarch64.pkg.tar.xz",

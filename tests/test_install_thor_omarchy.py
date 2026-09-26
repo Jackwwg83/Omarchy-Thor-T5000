@@ -9,7 +9,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "install-thor-omarchy.sh"
-SERIAL = "2797824271339930"
+SERIAL = "0000000000001234"
 SIZE = 248145510400
 OMARCHY_KEY = "40DFB630FF42BCFFB047046CF0134EE680CAC571"
 PKGS = ("omarchy-4.0.4-1-aarch64.pkg.tar.xz", "omarchy-settings-4.0.4-1-aarch64.pkg.tar.xz",

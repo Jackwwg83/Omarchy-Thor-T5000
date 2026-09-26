@@ -10,7 +10,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "publish-thor-repo.sh"
-SERIAL = "2797824271339930"
+SERIAL = "0000000000001234"
 SIZE = 248145510400
 FPR = "ABCDEF0123456789ABCDEF0123456789ABCDEF01"
 DB = "var/lib/raytone/repo/raytone-thor.db.tar.gz"
