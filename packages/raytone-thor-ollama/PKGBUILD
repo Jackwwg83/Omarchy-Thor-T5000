@@ -5,7 +5,7 @@
 # The service is Arch ollama's shape, not enabled by the package: systemctl enable --now ollama.
 pkgname=raytone-thor-ollama
 pkgver=0.34.4
-pkgrel=1
+pkgrel=2
 pkgdesc='Ollama (official arm64 build, CUDA 13 backend) for Jetson AGX Thor'
 arch=(aarch64)
 url='https://ollama.com'

@@ -41,6 +41,11 @@ class OllamaPackageTests(unittest.TestCase):
         sysusers = (PKG / "ollama.sysusers").read_text()
         self.assertIn("u ollama - \"Ollama\" /var/lib/ollama", sysusers)
 
+    def test_the_service_user_may_use_the_gpu_memory_manager(self):
+        # On the Thor, libcuda opens /dev/nvmap (root:video 0660); without the group the service
+        # logged "NvRmMemInitNvmap failed: error Permission denied" and ran the model on the CPU.
+        self.assertIn("m ollama video", (PKG / "ollama.sysusers").read_text().splitlines())
+
     def test_not_enabled_by_the_package(self):
         # as Arch's ollama package: the user enables it (systemctl enable --now ollama)
         self.assertNotIn(".wants", (PKG / "PKGBUILD").read_text())
