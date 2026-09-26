@@ -55,9 +55,6 @@ class OllamaPackageTests(unittest.TestCase):
         self.assertIn("ollama", pkgbuild('printf "%s\\n" "${provides[@]}"'))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class OllamaLicenseTests(unittest.TestCase):
     """From Codex's Slice 3 review: the kept cuda_v13 backend bundles NVIDIA's cudart and cuBLAS."""
@@ -81,3 +78,6 @@ class OllamaLicenseTests(unittest.TestCase):
     def test_missing_upstream_license_files_fail_the_build(self):
         text = (PKG / "PKGBUILD").read_text()
         self.assertNotIn("[[ -f $pkgdir/usr/lib/ollama/$l ]] &&", text)
+
+if __name__ == "__main__":
+    unittest.main()

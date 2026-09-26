@@ -55,6 +55,17 @@ class RegistrationTests(unittest.TestCase):
                                                  "# comment\n/usr/local/cuda/targets/sbsa-linux/lib/stubs\n"}, links=self.CUDA_LINKS)
         self.assertTrue(any("stub" in f for f in found), found)
 
+    def test_a_link_to_a_stub_directory_on_the_loader_path_fails(self):
+        found = cp.problems(["etc/ld.so.conf.d/x.conf", "opt/x/lib", "opt/x/stubs/libcuda.so"],
+                            contents={"etc/ld.so.conf.d/x.conf": "/opt/x/lib\n"}, links={"opt/x/lib": "stubs"})
+        self.assertTrue(any("stub" in f for f in found), found)
+
+    def test_an_arch_library_name_as_a_link_in_a_loader_directory_fails(self):
+        found = cp.problems(["etc/ld.so.conf.d/x.conf", "opt/x/lib/libstdc++.so.6", "opt/x/lib/real.so"],
+                            contents={"etc/ld.so.conf.d/x.conf": "/opt/x/lib\n"},
+                            links={"opt/x/lib/libstdc++.so.6": "real.so"})
+        self.assertTrue(any("shadow" in f for f in found), found)
+
     def test_a_system_directory_on_the_loader_path_fails(self):
         for d in ("/usr/lib", "/lib", "/usr/lib/"):
             with self.subTest(d=d):

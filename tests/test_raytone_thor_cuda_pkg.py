@@ -69,8 +69,23 @@ class CudaPackageTests(unittest.TestCase):
         for kept in ("libcudart_static.a", "libcudadevrt.a", "libculibos.a", "libcublas.so.13"):
             self.assertIsNone(repack._drop_reason(lib + kept, rx))
 
-    def test_no_stub_library_on_the_loader_path(self):
-        self.assertNotIn("stubs", (PKG / "PKGBUILD").read_text().split("package()")[1])
+    def test_the_packaged_loader_paths_pass_the_checker(self):
+        # The loader configuration comes from NVIDIA's debs (cuda-toolkit-config-common): recorded
+        # from the built package on the Thor, 2026-09-26. With the package's layout links, the checker
+        # must accept it and must refuse the same package with a stubs entry.
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("check_package", ROOT / "scripts" / "check_package.py")
+        cp = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cp)
+        lib = "usr/local/cuda-13.2/targets/sbsa-linux/lib/"
+        paths = ["etc/ld.so.conf.d/000_cuda.conf", "etc/ld.so.conf.d/987_cuda-13.conf", "usr/local/cuda",
+                 "usr/local/cuda-13", lib + "libcublas.so.13", lib + "libcudart.so.13", lib + "stubs/libcuda.so"]
+        links = {"usr/local/cuda": "cuda-13.2", "usr/local/cuda-13": "cuda-13.2"}
+        contents = {"etc/ld.so.conf.d/000_cuda.conf": "/usr/local/cuda/targets/sbsa-linux/lib\n",
+                    "etc/ld.so.conf.d/987_cuda-13.conf": "/usr/local/cuda-13/targets/sbsa-linux/lib\n"}
+        self.assertEqual(cp.problems(paths, contents, links), [])
+        contents["etc/ld.so.conf.d/000_cuda.conf"] += "/usr/local/cuda/targets/sbsa-linux/lib/stubs\n"
+        self.assertTrue(cp.problems(paths, contents, links))
 
     def test_depends_on_the_driver_and_the_host_compiler(self):
         depends = pkgbuild('printf "%s\\n" "${depends[@]}"').split()

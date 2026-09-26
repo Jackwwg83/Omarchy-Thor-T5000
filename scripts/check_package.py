@@ -51,7 +51,8 @@ def resolve_dir(path, links):
     return cur
 
 
-def _loader_paths(path, text, files, links):
+def _loader_paths(path, text, names, links):
+    """names: every member, files and links alike (a link can carry an Arch library's name)."""
     out = []
     for line in (text or "").splitlines():
         d = line.split("#", 1)[0].strip().strip("/")
@@ -59,10 +60,10 @@ def _loader_paths(path, text, files, links):
             continue
         if d in SYSTEM_DIRS:
             out.append(f"{path}: puts the system directory /{d} on the loader path")
-        if "stubs" in d.split("/"):
-            out.append(f"{path}: puts a stub library directory (/{d}) on the loader path")
         real = resolve_dir(d, links)
-        for f in files:
+        if "stubs" in d.split("/") or "stubs" in real.split("/"):
+            out.append(f"{path}: puts a stub library directory (/{d}) on the loader path")
+        for f in names:
             if posixpath.dirname(f) == real and SHADOW_LIB.match(posixpath.basename(f)):
                 out.append(f"{path}: /{d} holds {posixpath.basename(f)}, which would shadow Arch's")
     return out
@@ -97,7 +98,7 @@ def problems(paths, contents=None, links=None):
         if p.startswith("etc/ld.so.conf.d/") and "/usr/lib/aarch64-linux-gnu/nvidia" in contents.get(p, ""):
             out.append(f"{p}: puts NVIDIA's whole library directory on the loader path")
         if p.startswith("etc/ld.so.conf.d/"):
-            out.extend(_loader_paths(p, contents.get(p), files, links))
+            out.extend(_loader_paths(p, contents.get(p), set(paths), links))
         if p.startswith(REGISTRATION_DIRS) and p.endswith(".json"):
             out.extend(_registration(p, contents.get(p), files, links))
     return out
