@@ -231,13 +231,19 @@ case $step in
     [[ $(blkid -o value -s PARTUUID "$(p 12)" 2>/dev/null | tr 'A-Z' 'a-z') == "$uuid" ]] || die "$(p 12)'s PARTUUID is not $uuid"
     if ((write)); then
       # a skipped or interrupted clone must not become the default entry: check it, read-only, first
+      # noload keeps the check read-only, so the journal must have nothing to replay (clone unmounts cleanly)
+      dumpe2fs -h "$(p 12)" 2>/dev/null > "$work/p12.h" || die "cannot read $(p 12)'s superblock"
+      grep -qE '^Filesystem state: +clean$' "$work/p12.h" && ! grep -q needs_recovery "$work/p12.h" ||
+        die "$(p 12) is not cleanly unmounted (needs journal recovery); run clone again"
       mkdir -p "$ROOT_MNT"
       mount -o ro,noload "$(p 12)" "$ROOT_MNT"
       [[ $(cat "$ROOT_MNT/.raytone-cloned" 2>/dev/null) == "$uuid" && ! -e $ROOT_MNT/.raytone-cloning ]] ||
         die "$(p 12) holds no finished clone (run clone)"
       [[ $(awk '!/^[[:space:]]*#/ && $2 == "/" {print $1}' "$ROOT_MNT/etc/fstab") == "PARTUUID=$uuid" ]] ||
         die "the clone's fstab does not mount $(p 12) as /"
-      [[ -f $ROOT_MNT/etc/raytone/nvme-boot.conf ]] || die "the clone has no /etc/raytone/nvme-boot.conf (kernel updates would not reach APP)"
+      printf 'APP_PARTUUID=%s\nKERNEL=%s\nINITRD=%s\n' "$APP_PARTUUID" "$KERNEL_DST" "$INITRD_DST" > "$work/nvme-boot.conf"
+      cmp -s "$work/nvme-boot.conf" "$ROOT_MNT/etc/raytone/nvme-boot.conf" ||
+        die "the clone's /etc/raytone/nvme-boot.conf is missing or wrong (kernel updates would not reach APP)"
       umount "$ROOT_MNT"
       mount -o noatime "$(p 1)" "$MNT"
       for d in boot boot/extlinux boot/extlinux/extlinux.conf boot/raytone-thor; do

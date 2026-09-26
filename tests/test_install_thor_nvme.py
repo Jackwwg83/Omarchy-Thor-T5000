@@ -33,7 +33,9 @@ STUB = textwrap.dedent("""\
       findmnt) cat "$STATE/root" ;;
       sfdisk)
         if [[ " $* " == *" --dump "* ]]; then cat "$STATE/table"; else cat > "$STATE/table"; fi ;;
-      dumpe2fs) printf 'Block count:              499400777\\nFree blocks:              477712108\\nBlock size:               %s\\n' "$(cat "$STATE/blocksize" 2>/dev/null || echo 4096)" ;;
+      dumpe2fs) printf 'Block count:              499400777\\nFree blocks:              477712108\\nBlock size:               %s\\n' "$(cat "$STATE/blocksize" 2>/dev/null || echo 4096)"
+        if [[ -f $STATE/p12-dirty ]]; then printf 'Filesystem features:      has_journal extent needs_recovery\\nFilesystem state:         not clean\\n'
+        else printf 'Filesystem features:      has_journal extent\\nFilesystem state:         clean\\n'; fi ;;
       blkid)
         if [[ " $* " == *" PARTUUID "* ]]; then cat "$STATE/p12-partuuid" 2>/dev/null; else cat "$STATE/blkid" 2>/dev/null; fi ;;
       mkfs.ext4) echo ext4 > "$STATE/blkid" ;;
@@ -72,7 +74,8 @@ class InstallThorNvmeTests(unittest.TestCase):
         (self.rootmnt / "etc" / "raytone").mkdir(parents=True)
         (self.rootmnt / ".raytone-cloned").write_text(UUID.lower() + "\n")
         (self.rootmnt / "etc" / "fstab").write_text(f"PARTUUID={UUID.lower()} / ext4 defaults,noatime 0 1\n")
-        (self.rootmnt / "etc" / "raytone" / "nvme-boot.conf").write_text("APP_PARTUUID=1b3479b0-b4c2-4a1b-8b81-86d864b3944e\n")
+        (self.rootmnt / "etc" / "raytone" / "nvme-boot.conf").write_text(
+            "APP_PARTUUID=1b3479b0-b4c2-4a1b-8b81-86d864b3944e\nKERNEL=/boot/raytone-thor/Image\nINITRD=/boot/raytone-thor/initrd\n")
         for d in (self.state, self.bin, self.mnt, self.src / "etc", self.src / "boot"):
             d.mkdir(parents=True)
         for tool in ("lsblk", "findmnt", "sfdisk", "e2fsck", "resize2fs", "dumpe2fs", "blkid", "mkfs.ext4", "mount",
@@ -385,6 +388,18 @@ class InstallThorNvmeTests(unittest.TestCase):
         self.split_disk()
         (self.rootmnt / "etc" / "raytone" / "nvme-boot.conf").unlink()
         self.assert_boot_entry_refused("no nvme-boot.conf")
+
+    def test_boot_entry_refuses_a_wrong_kernel_sync_config(self):
+        # From Codex's re-review: the kernel hook reads it; a wrong APP or path sends kernels elsewhere
+        self.split_disk()
+        (self.rootmnt / "etc" / "raytone" / "nvme-boot.conf").write_text("APP_PARTUUID=0000\n")
+        self.assert_boot_entry_refused("wrong nvme-boot.conf")
+
+    def test_boot_entry_refuses_a_root_that_needs_journal_recovery(self):
+        # From Codex's re-review: ro,noload would read an unreplayed journal's stale marker
+        self.split_disk()
+        (self.state / "p12-dirty").touch()
+        self.assertIn("clean", self.assert_boot_entry_refused("needs_recovery").stderr)
 
     def test_boot_entry_refuses_a_p12_with_another_partuuid(self):
         self.split_disk()
