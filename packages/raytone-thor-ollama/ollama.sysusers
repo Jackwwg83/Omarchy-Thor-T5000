@@ -1,0 +1,3 @@
+u ollama - "Ollama" /var/lib/ollama
+# /dev/nvmap (the GPU memory manager libcuda opens) is root:video 0660 on the Thor
+m ollama video

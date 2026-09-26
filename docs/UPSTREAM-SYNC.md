@@ -87,6 +87,15 @@ python3 scripts/check_package.py ~/raytone/pkgs/omarchy-X.Y.Z-1-aarch64.pkg.tar.
 
 ## Other packages that follow upstream
 
+- **CUDA** (`packages/raytone-thor-cuda`): a new release in the Jetson repository's common
+  component: check the index signature (NVIDIA Jetson key 13804AEE…B004) and hashes as in
+  `manifests/README.md`, update `manifests/cuda-wanted.tsv`, regenerate `manifests/cuda-13.2.json`
+  with `scripts/l4t_manifest.py`, paste the source block with `scripts/pkgbuild_sources.py`, rebuild,
+  and rerun `tests/cuda-smoke.cu` on the Thor (a new CUDA may accept gcc 16, or refuse it in C++17 too).
+- **Ollama** (`packages/raytone-thor-ollama`): a new release's `ollama-linux-arm64.tar.zst`: bump
+  `pkgver`, put the release's sha256 digest in `sha256sums`, rebuild, check that `cuda_v13` still
+  exists and runs a model on the GPU (`ollama ps`: 100% GPU).
+
 - **Hyprland** (`packages/hyprland`): the port's build of Arch Linux ARM's recipe with
   `egl-render-node.patch`. `[raytone-thor]` comes first, so the port's build wins even when ALARM
   moves on; when ALARM ships a new Hyprland, rebuild from its recipe with the patch, and check the

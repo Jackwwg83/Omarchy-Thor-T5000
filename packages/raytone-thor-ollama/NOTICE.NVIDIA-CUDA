@@ -1,0 +1,11 @@
+raytone-thor-ollama ships Ollama's official arm64 build unmodified. Its CUDA 13 backend
+(/usr/lib/ollama/cuda_v13) bundles these NVIDIA CUDA runtime libraries, redistributed by Ollama:
+
+  libcudart.so.13 (13.0.96)
+  libcublas.so.13, libcublasLt.so.13 (13.1.1.3)
+
+They are governed by the NVIDIA CUDA Toolkit End User License Agreement:
+https://docs.nvidia.com/cuda/eula/index.html
+
+Ollama itself is MIT licensed (LICENSE); its other bundled components carry the license files
+installed next to this notice (Go, llama.cpp and its vendored code, cpp-httplib).

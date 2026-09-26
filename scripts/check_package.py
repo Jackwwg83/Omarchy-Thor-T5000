@@ -5,8 +5,10 @@
 
 Fails on files under directories that are symlinks on Arch (/lib, /bin, /sbin, /usr/sbin), on
 anything the port prohibits (see l4t_manifest.py), on generic libraries in the loader directory the
-port adds, on loader configuration that puts NVIDIA's whole library directory on the path, and on
-glvnd, EGL platform or Vulkan ICD registrations whose library the package does not ship.
+port adds, on loader configuration that puts NVIDIA's whole library directory on the path, a
+system directory or a stub directory, or a directory holding libraries Arch ships (followed through
+the package's links), and on glvnd, EGL platform or Vulkan ICD registrations whose library the
+package does not ship.
 """
 import importlib.util
 import json
@@ -23,6 +25,9 @@ _spec.loader.exec_module(_m)
 MERGED = ("lib/", "bin/", "sbin/", "usr/sbin/")
 GENERIC_LIB = re.compile(r"^lib(vulkan|gbm|EGL|GLX|GL|GLESv[12]|GLdispatch|OpenGL|wayland-[a-z]+|drm|v4l2|v4lconvert|gnat|gnarl)\.so")
 LOADER_DIR = "usr/lib/raytone-l4t/"
+# Libraries Arch ships that a loader directory added by a package must never shadow.
+SHADOW_LIB = re.compile(GENERIC_LIB.pattern + r"|^lib(c|m|dl|rt|pthread|stdc\+\+|gcc_s|z|OpenCL)\.so")
+SYSTEM_DIRS = {"usr/lib", "lib", "usr/lib64", "lib64"}
 REGISTRATION_DIRS = ("usr/share/glvnd/egl_vendor.d/", "etc/glvnd/egl_vendor.d/",
                      "usr/share/egl/egl_external_platform.d/", "etc/vulkan/icd.d/", "usr/share/vulkan/icd.d/")
 
@@ -36,6 +41,32 @@ def resolve(path, links):
         path = posixpath.normpath(target.lstrip("/") if target.startswith("/")
                                   else posixpath.join(posixpath.dirname(path), target))
     return None
+
+
+def resolve_dir(path, links):
+    """A directory path with every component's link followed (links between package members)."""
+    cur = ""
+    for part in path.split("/"):
+        cur = resolve(posixpath.join(cur, part) if cur else part, links) or ""
+    return cur
+
+
+def _loader_paths(path, text, names, links):
+    """names: every member, files and links alike (a link can carry an Arch library's name)."""
+    out = []
+    for line in (text or "").splitlines():
+        d = line.split("#", 1)[0].strip().strip("/")
+        if not d:
+            continue
+        if d in SYSTEM_DIRS:
+            out.append(f"{path}: puts the system directory /{d} on the loader path")
+        real = resolve_dir(d, links)
+        if "stubs" in d.split("/") or "stubs" in real.split("/"):
+            out.append(f"{path}: puts a stub library directory (/{d}) on the loader path")
+        for f in names:
+            if posixpath.dirname(f) == real and SHADOW_LIB.match(posixpath.basename(f)):
+                out.append(f"{path}: /{d} holds {posixpath.basename(f)}, which would shadow Arch's")
+    return out
 
 
 def _registration(path, text, files, links):
@@ -66,6 +97,8 @@ def problems(paths, contents=None, links=None):
             out.append(f"{p}: generic library would shadow Arch's")
         if p.startswith("etc/ld.so.conf.d/") and "/usr/lib/aarch64-linux-gnu/nvidia" in contents.get(p, ""):
             out.append(f"{p}: puts NVIDIA's whole library directory on the loader path")
+        if p.startswith("etc/ld.so.conf.d/"):
+            out.extend(_loader_paths(p, contents.get(p), set(paths), links))
         if p.startswith(REGISTRATION_DIRS) and p.endswith(".json"):
             out.extend(_registration(p, contents.get(p), files, links))
     return out

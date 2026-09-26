@@ -1,0 +1,1 @@
+../../scripts/l4t_manifest.py

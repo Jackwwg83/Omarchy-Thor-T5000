@@ -7,7 +7,7 @@ packages through the AUR RPC and their PKGBUILDs. `omarchy-pkg-add` runs `pacman
 package missing from core/extra/alarm/aur or Omarchy's `edge/aarch64` fails even when the AUR has
 an aarch64 build.
 
-## Hidden by `raytone-thor-menu-extension` (24)
+## Hidden by `raytone-thor-menu-extension` (23; Ollama since Slice 3.2 installs the Thor's package)
 
 | id | Why it cannot work on the Thor | Evidence |
 |---|---|---|
@@ -17,7 +17,6 @@ an aarch64 build.
 | install.service.bitwarden | desktop app x86_64 only | `bitwarden` not found (bitwarden-cli exists) |
 | install.browser.edge | x86_64 only | AUR microsoft-edge-stable-bin `arch=('x86_64')` |
 | install.terminal.ghostty | not built for aarch64 | `pacman -Sp ghostty`: target not found |
-| install.ai.ollama | no package (`ollama`, `ollama-cuda`) | `pacman -Ssq ollama`: nothing. Slice 3 brings Ollama with CUDA |
 | install.ai.lm-studio | x86_64 only | lmstudio-bin not found; AUR `arch=('x86_64')` |
 | install.ai.grok-bot | x86_64 only | not found; AUR `arch=('x86_64')` |
 | install.ai.t3-code | x86_64 only | t3code-bin not found; AUR `arch=('x86_64')` |
@@ -35,6 +34,12 @@ an aarch64 build.
 | style.unlock | Plymouth is not in this boot | no `splash` on the kernel command line, no plymouth hook; it would also rebuild the Thor's initramfs (`mkinitcpio -P`) |
 | update.config.plymouth | as style.unlock | as style.unlock |
 | update.firmware | firmware capsules are off limits on this board | fwupd exists with one ESRT entry; the project never writes QSPI or capsules |
+
+## Pointed at a Thor package
+
+| id | Action |
+|---|---|
+| install.ai.ollama | `omarchy-install-app Ollama raytone-thor-ollama` (upstream's picks `ollama-cuda` or `ollama`, which do not exist for aarch64) |
 
 ## Already hidden by upstream's own `when:` on the Thor
 

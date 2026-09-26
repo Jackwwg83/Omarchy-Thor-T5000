@@ -2,7 +2,7 @@
 # units, power model, fan control, tools, NVML (nvidia-smi) and NvSci.
 pkgname=raytone-thor-core
 pkgver=39.2.1
-pkgrel=4
+pkgrel=5
 pkgdesc='NVIDIA L4T R39.2.1 base userspace, power and fan control for Jetson AGX Thor'
 arch=(aarch64)
 url='https://developer.nvidia.com/embedded/jetson-linux'
@@ -14,7 +14,7 @@ backup=(etc/nvpmodel/nvpmodel_p3834_0008.conf etc/nvpower/nvfancontrol/nvfancont
 
 # BEGIN l4t sources
 # L4T r39.2 debs, from manifests/ (scripts/pkgbuild_sources.py)
-_l4t_debs=(nvidia-l4t-core nvidia-l4t-init nvidia-l4t-init-openrm nvidia-l4t-configs nvidia-l4t-nvpmodel nvidia-l4t-nvfancontrol nvidia-l4t-tools nvidia-l4t-nvml nvidia-l4t-nvsci)
+_l4t_debs=(nvidia-l4t-core nvidia-l4t-init nvidia-l4t-init-openrm nvidia-l4t-configs nvidia-l4t-nvpmodel nvidia-l4t-nvfancontrol nvidia-l4t-tools nvidia-l4t-nvml nvidia-l4t-nvsci nvidia-l4t-cuda nvidia-l4t-cuda-openrm nvidia-l4t-cuda-utils)
 source=("nvidia-l4t-core.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-core/nvidia-l4t-core_39.2.1-20260806224157_arm64.deb"
         "nvidia-l4t-init.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-init/nvidia-l4t-init_39.2.1-20260806224157_arm64.deb"
         "nvidia-l4t-init-openrm.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-init-openrm/nvidia-l4t-init-openrm_39.2.1-20260806224157_arm64.deb"
@@ -23,7 +23,10 @@ source=("nvidia-l4t-core.deb::https://repo.download.nvidia.com/jetson/som/pool/m
         "nvidia-l4t-nvfancontrol.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-nvfancontrol/nvidia-l4t-nvfancontrol_39.2.1-20260806224157_arm64.deb"
         "nvidia-l4t-tools.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-tools/nvidia-l4t-tools_39.2.1-20260806224157_arm64.deb"
         "nvidia-l4t-nvml.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-nvml/nvidia-l4t-nvml_39.2.1-20260806224157_arm64.deb"
-        "nvidia-l4t-nvsci.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-nvsci/nvidia-l4t-nvsci_39.2.1-20260806224157_arm64.deb")
+        "nvidia-l4t-nvsci.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-nvsci/nvidia-l4t-nvsci_39.2.1-20260806224157_arm64.deb"
+        "nvidia-l4t-cuda.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-cuda/nvidia-l4t-cuda_39.2.1-20260806224157_arm64.deb"
+        "nvidia-l4t-cuda-openrm.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-cuda-openrm/nvidia-l4t-cuda-openrm_39.2.1-20260806224157_arm64.deb"
+        "nvidia-l4t-cuda-utils.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-cuda-utils/nvidia-l4t-cuda-utils_39.2.1-20260806224157_arm64.deb")
 sha256sums=('277a6fb25f2c06cc2dee6d352bef3abb15929739f396fea1cee70d1dea83008b'
             '26cfc6b244ba3d3bbf424732a1ffe0d9e21faa0298eaacc911b7466b5bd76b93'
             'bb4220b9f165b5fa6fdf07222d76e9758e783ff8f1be4ba06800a5878f988300'
@@ -32,8 +35,11 @@ sha256sums=('277a6fb25f2c06cc2dee6d352bef3abb15929739f396fea1cee70d1dea83008b'
             '3cc0463ed8e0b7c5ee6c03baa63bc14307a7ba3f46d93fb2959c52b49e4fb6a8'
             'c73b0cb57f5c16055fca985252b62a5ce4e9e9b5f912f78bd73250d6e5db23c1'
             '6c3e78ad11e84c3c677f2d9c60473ca52103ed378faab9ccf6a83f756b884b21'
-            '7dc851490b23a4bba340786ee9b2fc51793c6c6bcdeca2fe0add5cadc0307423')
-noextract=(nvidia-l4t-core.deb nvidia-l4t-init.deb nvidia-l4t-init-openrm.deb nvidia-l4t-configs.deb nvidia-l4t-nvpmodel.deb nvidia-l4t-nvfancontrol.deb nvidia-l4t-tools.deb nvidia-l4t-nvml.deb nvidia-l4t-nvsci.deb)
+            '7dc851490b23a4bba340786ee9b2fc51793c6c6bcdeca2fe0add5cadc0307423'
+            'a8f65b17c3dc9cae34d77e3a3481b809a49443d83241d85d5fea36525af6ab51'
+            'ac4d4b377d9154cb92fb59ddb8292937fcd9ff44b53bd807459c54a03fc29787'
+            '6d143e637e37adf6ee34969a2f25526c03ef2e5513e6fcda267649792c84e870')
+noextract=(nvidia-l4t-core.deb nvidia-l4t-init.deb nvidia-l4t-init-openrm.deb nvidia-l4t-configs.deb nvidia-l4t-nvpmodel.deb nvidia-l4t-nvfancontrol.deb nvidia-l4t-tools.deb nvidia-l4t-nvml.deb nvidia-l4t-nvsci.deb nvidia-l4t-cuda.deb nvidia-l4t-cuda-openrm.deb nvidia-l4t-cuda-utils.deb)
 # END l4t sources
 source+=(l4t_repack.py l4t_manifest.py raytone-thor-audio-route raytone-thor-audio-route.service
          70-raytone-thor-audio-route.rules)
@@ -56,6 +62,20 @@ _repack() { # _repack EXCLUDE_REGEX... : lay the trees out for Arch, report kept
   python3 "$srcdir/l4t_repack.py" --out "$pkgdir" --pkgname "$pkgname" --report "$srcdir/$pkgname-report.json" \
     "${args[@]}" $(printf "$srcdir/stage-%s " "${_l4t_debs[@]}")
   install -Dm644 "$srcdir/$pkgname-report.json" "$pkgdir/usr/share/raytone/$pkgname-report.json"
+}
+
+# JetPack's nv-load-gpu-libs.sh, for the OpenRM variant this board runs, as static files (the
+# service stays disabled): the loader finds libcuda in cuda-openrm's directory, libcuda.so{,.1} are
+# linked where CUDA programs look, and the container runtime's CSV lists the driver libraries.
+_gpu_libs_wiring() {
+  local d=/opt/nvidia/l4t-gpu-libs/openrm
+  install -d "$pkgdir/etc/ld.so.conf.d" "$pkgdir/usr/lib/aarch64-linux-gnu" \
+    "$pkgdir/etc/nvidia-container-runtime/host-files-for-container.d"
+  echo "$d" > "$pkgdir/etc/ld.so.conf.d/000-nvidia-gpu-libs.conf"
+  ln -sfn "$d/libcuda.so" "$pkgdir/usr/lib/aarch64-linux-gnu/libcuda.so"
+  ln -sfn "$d/libcuda.so.1" "$pkgdir/usr/lib/aarch64-linux-gnu/libcuda.so.1"
+  printf 'lib, %s\n' "$d/libcuda.so.1.1" "$d/libcuda_instrumentation.so" \
+    > "$pkgdir/etc/nvidia-container-runtime/host-files-for-container.d/l4t.csv"
 }
 
 package() {
@@ -83,6 +103,8 @@ EOF
   install -Dm755 "$srcdir/raytone-thor-audio-route" "$pkgdir/usr/lib/raytone/raytone-thor-audio-route"
   install -Dm644 "$srcdir/raytone-thor-audio-route.service" "$pkgdir/usr/lib/systemd/system/raytone-thor-audio-route.service"
   install -Dm644 "$srcdir/70-raytone-thor-audio-route.rules" "$pkgdir/usr/lib/udev/rules.d/70-raytone-thor-audio-route.rules"
+  _gpu_libs_wiring
+  test -f "$pkgdir/opt/nvidia/l4t-gpu-libs/openrm/libcuda.so.1.1"
   # Links resolve on the target system; in the build root they dangle, so check the link itself.
   test -L "$pkgdir/usr/lib/raytone-l4t/libnvidia-rmapi-tegra.so.595.78"
 }

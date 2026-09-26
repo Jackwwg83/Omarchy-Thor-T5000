@@ -41,6 +41,43 @@ ICD = '{"file_format_version": "1.0.0", "ICD": {"library_path": "%s"}}'
 class RegistrationTests(unittest.TestCase):
     """glvnd vendor, EGL external platform and Vulkan ICD files must name a library the package ships."""
 
+    # Loader paths (Codex, Slice 3 review): what a package's ld.so.conf.d entries put on the path.
+    CUDA = ["etc/ld.so.conf.d/000_cuda.conf", "usr/local/cuda", "usr/local/cuda-13.2/targets/sbsa-linux/lib/libcublas.so.13",
+            "usr/local/cuda-13.2/targets/sbsa-linux/lib/stubs/libcuda.so"]
+    CUDA_LINKS = {"usr/local/cuda": "cuda-13.2"}
+
+    def test_cuda_loader_path_through_its_link_passes(self):
+        self.assertEqual(cp.problems(self.CUDA, contents={"etc/ld.so.conf.d/000_cuda.conf":
+                                                          "/usr/local/cuda/targets/sbsa-linux/lib\n"}, links=self.CUDA_LINKS), [])
+
+    def test_a_stub_directory_on_the_loader_path_fails(self):
+        found = cp.problems(self.CUDA, contents={"etc/ld.so.conf.d/000_cuda.conf":
+                                                 "# comment\n/usr/local/cuda/targets/sbsa-linux/lib/stubs\n"}, links=self.CUDA_LINKS)
+        self.assertTrue(any("stub" in f for f in found), found)
+
+    def test_a_link_to_a_stub_directory_on_the_loader_path_fails(self):
+        found = cp.problems(["etc/ld.so.conf.d/x.conf", "opt/x/lib", "opt/x/stubs/libcuda.so"],
+                            contents={"etc/ld.so.conf.d/x.conf": "/opt/x/lib\n"}, links={"opt/x/lib": "stubs"})
+        self.assertTrue(any("stub" in f for f in found), found)
+
+    def test_an_arch_library_name_as_a_link_in_a_loader_directory_fails(self):
+        found = cp.problems(["etc/ld.so.conf.d/x.conf", "opt/x/lib/libstdc++.so.6", "opt/x/lib/real.so"],
+                            contents={"etc/ld.so.conf.d/x.conf": "/opt/x/lib\n"},
+                            links={"opt/x/lib/libstdc++.so.6": "real.so"})
+        self.assertTrue(any("shadow" in f for f in found), found)
+
+    def test_a_system_directory_on_the_loader_path_fails(self):
+        for d in ("/usr/lib", "/lib", "/usr/lib/"):
+            with self.subTest(d=d):
+                self.assertTrue(cp.problems(["etc/ld.so.conf.d/x.conf"], contents={"etc/ld.so.conf.d/x.conf": d + "\n"}))
+
+    def test_a_loader_directory_with_arch_libraries_fails(self):
+        for lib in ("libstdc++.so.6", "libc.so.6", "libgcc_s.so.1", "libz.so.1", "libOpenCL.so.1", "libEGL.so.1"):
+            with self.subTest(lib=lib):
+                found = cp.problems(["etc/ld.so.conf.d/x.conf", f"opt/x/lib/{lib}"],
+                                    contents={"etc/ld.so.conf.d/x.conf": "/opt/x/lib\n"})
+                self.assertTrue(any("shadow" in f for f in found), found)
+
     def test_bare_soname_resolves_through_the_loader_directory(self):
         paths = [f"{NV}/libGLX_nvidia.so.0", "usr/lib/raytone-l4t/libGLX_nvidia.so.0", "etc/vulkan/icd.d/nvidia_icd.json"]
         links = {"usr/lib/raytone-l4t/libGLX_nvidia.so.0": f"/{NV}/libGLX_nvidia.so.0"}

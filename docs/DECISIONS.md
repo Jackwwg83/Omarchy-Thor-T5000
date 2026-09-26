@@ -285,3 +285,17 @@ unmodified. Evidence: [slice2/README.md](evidence/slice2/README.md).
   test bed while CUDA/Docker/Ollama land, and the NVMe step, which lifts the "never write the NVMe
   partition table or ESP" rule, gets its own plan, Codex review and approval, with a full JetPack
   backup first.
+
+## 2026-09-26 — Slice 3: CUDA 13.2, Docker GPU through CDI, Ollama
+
+- **CUDA from NVIDIA's Jetson repository** (common r39.2, the same content as the SBSA repository),
+  pinned in `manifests/cuda-13.2.json` after checking the index signature and hashes; laid out as
+  Ubuntu installs it (`/usr/local/cuda-13.2`, `cuda`/`cuda-13` links). cuDNN and TensorRT left out.
+- **Host compiler: Arch's gcc 16** (owner's choice over building gcc 15), with nvcc's
+  `-allow-unsupported-compiler -std=c++17` through `NVCC_PREPEND_FLAGS`: gcc 16 defaults to C++20,
+  whose headers nvcc rejects. Verified with a real CUDA program; building gcc 15 stays the fallback.
+- **Ollama: the official arm64 build** (owner's choice over building for sm_110), CUDA 12 backend
+  removed (ollama#13033); sm_110 runs its PTX, compiled once per user cache. The Omarchy menu entry
+  installs this package.
+- **CDI in CSV mode, regenerated at every boot into /run/cdi**, after NVIDIA's display stack; the
+  toolkit's own pacman hook is desktop-only. OOMScoreAdjust for Ollama (known issue 5699079).

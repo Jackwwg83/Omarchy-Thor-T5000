@@ -3,12 +3,12 @@
 # overrides (see raytone-omarchy-apply-system and overrides/UPSTREAM.sha256).
 pkgname=raytone-thor-omarchy
 pkgver=0.1.0
-pkgrel=5
+pkgrel=7
 pkgdesc='Jetson AGX Thor layer for Omarchy: display device, pacman repositories, install overrides'
 arch=(any)
 url='https://github.com/Jackwwg83/Omarchy-Thor-T5000'
 license=(MIT)
-depends=(omarchy raytone-thor-graphics raytone-thor-nft-modules hyprland sddm uwsm)
+depends=(omarchy raytone-thor-graphics raytone-thor-nft-modules nvidia-container-toolkit hyprland sddm uwsm)
 backup=(etc/sddm.conf.d/20-raytone-thor.conf)
 install=raytone-thor-omarchy.install
 # makepkg only takes local sources from this directory's top level, so the files are listed here and
@@ -17,6 +17,7 @@ _files=(raytone-omarchy-apply-system
         raytone-thor-pacman-restore
         raytone-thor-menu-extension
         raytone-thor-user-setup
+        raytone-thor-cdi.service
         skel/.config/omarchy/hooks/pre-refresh-pacman.d/10-raytone-thor
         skel/.config/omarchy/hooks/post-boot.d/10-raytone-thor-menu
         overrides/UPSTREAM.sha256
@@ -35,6 +36,9 @@ package() {
   install -Dm755 "$s/raytone-thor-pacman-restore" "$pkgdir/usr/bin/raytone-thor-pacman-restore"
   install -Dm755 "$s/raytone-thor-menu-extension" "$pkgdir/usr/bin/raytone-thor-menu-extension"
   install -Dm755 "$s/raytone-thor-user-setup" "$pkgdir/usr/bin/raytone-thor-user-setup"
+  install -Dm644 "$s/raytone-thor-cdi.service" "$pkgdir/usr/lib/systemd/system/raytone-thor-cdi.service"
+  install -d "$pkgdir/usr/lib/systemd/system/multi-user.target.wants"
+  ln -s ../raytone-thor-cdi.service "$pkgdir/usr/lib/systemd/system/multi-user.target.wants/raytone-thor-cdi.service"
   install -Dm644 "$s/skel/.config/omarchy/hooks/pre-refresh-pacman.d/10-raytone-thor" \
     "$pkgdir/etc/skel/.config/omarchy/hooks/pre-refresh-pacman.d/10-raytone-thor"
   install -Dm644 "$s/skel/.config/omarchy/hooks/post-boot.d/10-raytone-thor-menu" \

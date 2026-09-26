@@ -102,6 +102,26 @@ class RepackTests(unittest.TestCase):
         with self.assertRaises(rp.RepackError):
             rp.repack([a, b], self.out, pkgname="p")
 
+    def test_the_same_symlink_in_two_debs_is_one_path(self):
+        # CUDA's debs each carry /usr/local/cuda-13.2/include -> targets/sbsa-linux/include
+        a = self.stage("a", [("/usr/local/c/targets/x/include/a.h", 0o644)], links=[("/usr/local/c/include", "targets/x/include")])
+        b = self.stage("b", [("/usr/local/c/targets/x/include/b.h", 0o644)], links=[("/usr/local/c/include", "targets/x/include")])
+        report = rp.repack([a, b], self.out, pkgname="p")
+        self.assertEqual(os.readlink(self.out / "usr/local/c/include"), "targets/x/include")
+        self.assertEqual(report["kept"].count("/usr/local/c/include"), 1)
+
+    def test_the_same_path_as_different_symlinks_is_an_error(self):
+        a = self.stage("a", [], links=[("/usr/local/c/include", "targets/x/include")])
+        b = self.stage("b", [], links=[("/usr/local/c/include", "targets/y/include")])
+        with self.assertRaises(rp.RepackError):
+            rp.repack([a, b], self.out, pkgname="p")
+
+    def test_a_symlink_and_a_file_at_the_same_path_is_an_error(self):
+        a = self.stage("a", [], links=[("/usr/lib/x.so", "x.so.1")])
+        b = self.stage("b", [("/usr/lib/x.so", 0o644)])
+        with self.assertRaises(rp.RepackError):
+            rp.repack([a, b], self.out, pkgname="p")
+
     def test_nothing_is_written_under_merged_usr_symlink_directories(self):
         s = self.stage("a", [("/lib/modules/k/a.ko", 0o644), ("/sbin/t", 0o755), ("/bin/u", 0o755)])
         rp.repack([s], self.out, pkgname="p")
