@@ -32,6 +32,7 @@ INITRD_DST=/boot/raytone-thor/initrd
 SYS=${RAYTONE_SYS:-/sys}
 SERVICES=(ollama docker containerd)
 MNT=${RAYTONE_NVME_MOUNT:-/mnt/raytone-nvme}
+ROOT_MNT=${RAYTONE_ROOT_MOUNT:-/mnt/raytone-omarchy}
 SRC_ROOT=${RAYTONE_SOURCE_ROOT:-/}
 PY=${RAYTONE_PYTHON:-python3}
 planner() { "$PY" "$HERE/thor_nvme.py" "$@"; }
@@ -102,7 +103,7 @@ omarchy_uuid() {
 run() { if ((write)); then echo "+ $*"; "$@"; else echo "would run: $*"; fi; }
 
 work=$(mktemp -d)
-trap 'umount "$MNT" 2>/dev/null || true; rm -rf "$work"' EXIT
+trap 'umount "$MNT" 2>/dev/null || true; umount "$ROOT_MNT" 2>/dev/null || true; rm -rf "$work"' EXIT
 identity
 not_in_use
 if ((write)); then
@@ -177,7 +178,8 @@ case $step in
     if ((write)); then
       [[ ! -e $SRC_ROOT/var/lib/pacman/db.lck ]] || die "pacman is running (db.lck); let it finish"
       # the source must be quiet: nobody logged in at the Thor (the greeter and SSH sessions are fine)
-      [[ -z $(loginctl list-sessions --no-legend | awk '$6 == "user" && $4 != "-"') ]] ||
+      sessions=$(loginctl list-sessions --no-legend) || die "cannot list the login sessions (loginctl)"
+      [[ -z $(awk '$6 == "user" && $4 != "-"' <<< "$sessions") ]] ||
         die "someone is logged in at the Thor; log out of the desktop and text consoles first"
       stopped=()
       for s in "${SERVICES[@]}"; do
@@ -226,7 +228,17 @@ case $step in
     for m in pcie-tegra264.ko phy-tegra194-p2u.ko nvme.ko nvme-core.ko; do
       grep -q "/$m\$" "$work/initrd.list" || die "$INITRD_SRC lacks $m (mkinitcpio -P after installing raytone-thor-omarchy)"
     done
+    [[ $(blkid -o value -s PARTUUID "$(p 12)" 2>/dev/null | tr 'A-Z' 'a-z') == "$uuid" ]] || die "$(p 12)'s PARTUUID is not $uuid"
     if ((write)); then
+      # a skipped or interrupted clone must not become the default entry: check it, read-only, first
+      mkdir -p "$ROOT_MNT"
+      mount -o ro,noload "$(p 12)" "$ROOT_MNT"
+      [[ $(cat "$ROOT_MNT/.raytone-cloned" 2>/dev/null) == "$uuid" && ! -e $ROOT_MNT/.raytone-cloning ]] ||
+        die "$(p 12) holds no finished clone (run clone)"
+      [[ $(awk '!/^[[:space:]]*#/ && $2 == "/" {print $1}' "$ROOT_MNT/etc/fstab") == "PARTUUID=$uuid" ]] ||
+        die "the clone's fstab does not mount $(p 12) as /"
+      [[ -f $ROOT_MNT/etc/raytone/nvme-boot.conf ]] || die "the clone has no /etc/raytone/nvme-boot.conf (kernel updates would not reach APP)"
+      umount "$ROOT_MNT"
       mount -o noatime "$(p 1)" "$MNT"
       for d in boot boot/extlinux boot/extlinux/extlinux.conf boot/raytone-thor; do
         [[ ! -L $MNT/$d ]] || die "/$d on APP is a link"

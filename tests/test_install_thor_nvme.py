@@ -44,7 +44,7 @@ STUB = textwrap.dedent("""\
         sed -n 's|^.*p\\([0-9]*\\) : start= *\\([0-9]*\\), size= *\\([0-9]*\\).*|\\1 \\2 \\3|p' "$STATE/table" |
           while read -r n st sz; do d=$RAYTONE_SYS/class/block/nvme0n1p$n; mkdir -p "$d"; echo "$st" > "$d/start"; echo "$sz" > "$d/size"; done ;;
       lsinitcpio) cat "$STATE/initrd-list" ;;
-      loginctl) echo "c1 961 sddm seat0 1196 greeter tty1 no -"; echo "18 1000 nvidia - 8475 user - no -"; [[ -f $STATE/graphical-session ]] && echo "6 1000 nvidia seat0 2243 user tty2 no -" ; exit 0 ;;
+      loginctl) [[ -f $STATE/loginctl-fails ]] && exit 1; echo "c1 961 sddm seat0 1196 greeter tty1 no -"; echo "18 1000 nvidia - 8475 user - no -"; [[ -f $STATE/graphical-session ]] && echo "6 1000 nvidia seat0 2243 user tty2 no -" ; exit 0 ;;
       systemctl)
         case $1 in
           is-active) [[ -f $STATE/active-$3 ]] ;;
@@ -68,6 +68,11 @@ class InstallThorNvmeTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         t = pathlib.Path(self.tmp.name)
         self.state, self.bin, self.mnt, self.src, self.backup = t / "state", t / "bin", t / "mnt", t / "src", t / "backup"
+        self.rootmnt = t / "rootmnt"  # RAYTONE_OMARCHY as boot-entry sees it (mount is a stub): a finished clone
+        (self.rootmnt / "etc" / "raytone").mkdir(parents=True)
+        (self.rootmnt / ".raytone-cloned").write_text(UUID.lower() + "\n")
+        (self.rootmnt / "etc" / "fstab").write_text(f"PARTUUID={UUID.lower()} / ext4 defaults,noatime 0 1\n")
+        (self.rootmnt / "etc" / "raytone" / "nvme-boot.conf").write_text("APP_PARTUUID=1b3479b0-b4c2-4a1b-8b81-86d864b3944e\n")
         for d in (self.state, self.bin, self.mnt, self.src / "etc", self.src / "boot"):
             d.mkdir(parents=True)
         for tool in ("lsblk", "findmnt", "sfdisk", "e2fsck", "resize2fs", "dumpe2fs", "blkid", "mkfs.ext4", "mount",
@@ -98,7 +103,7 @@ class InstallThorNvmeTests(unittest.TestCase):
 
     def run_step(self, step, *args, write=True):
         env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}", STATE=str(self.state), SRC=str(self.src),
-                   UUIDGEN=UUID, RAYTONE_SKIP_ROOT_CHECK="1", RAYTONE_NVME_MOUNT=str(self.mnt),
+                   UUIDGEN=UUID, RAYTONE_SKIP_ROOT_CHECK="1", RAYTONE_NVME_MOUNT=str(self.mnt), RAYTONE_ROOT_MOUNT=str(self.rootmnt),
                    RAYTONE_SOURCE_ROOT=str(self.src), RAYTONE_KERNEL_SRC=str(self.src / "boot" / "vmlinuz-raytone-thor-linux"),
                    RAYTONE_INITRD_SRC=str(self.src / "boot" / "initramfs-raytone-thor-linux.img"), RAYTONE_SYS=str(self.sys))
         extra = ["--write", "--confirm-serial", SERIAL] if write else []
@@ -348,6 +353,55 @@ class InstallThorNvmeTests(unittest.TestCase):
         r = self.run_step("clone")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("log out", r.stderr)
+
+    def assert_boot_entry_refused(self, why):
+        r = self.run_step("boot-entry")
+        self.assertNotEqual(r.returncode, 0, why)
+        self.assertEqual((self.mnt / "boot" / "extlinux" / "extlinux.conf").read_text(), EXTLINUX, why)
+        self.assertFalse((self.mnt / "boot" / "raytone-thor" / "Image").exists(), why)
+        return r
+
+    def test_boot_entry_checks_the_clone_read_only_first(self):
+        # From Codex's re-review: a skipped or interrupted clone must not become the default entry
+        self.split_disk()
+        (self.state / "calls").unlink()
+        self.ok("boot-entry")
+        mounts = [c for c in self.calls() if c.startswith("mount ")]
+        self.assertIn("-o ro", mounts[0])
+        self.assertIn("nvme0n1p12", mounts[0])
+
+    def test_boot_entry_refuses_an_unfinished_clone(self):
+        self.split_disk()
+        (self.rootmnt / ".raytone-cloned").unlink()
+        (self.rootmnt / ".raytone-cloning").write_text(UUID.lower() + "\n")
+        self.assertIn("clone", self.assert_boot_entry_refused("interrupted clone").stderr)
+
+    def test_boot_entry_refuses_a_clone_that_does_not_boot_from_p12(self):
+        self.split_disk()
+        (self.rootmnt / "etc" / "fstab").write_text("PARTUUID=ca5a56c6-4a4b-4e02-8183-ff166514ae3b / ext4 defaults 0 1\n")
+        self.assert_boot_entry_refused("fstab root elsewhere")
+
+    def test_boot_entry_refuses_a_clone_without_the_kernel_sync_config(self):
+        self.split_disk()
+        (self.rootmnt / "etc" / "raytone" / "nvme-boot.conf").unlink()
+        self.assert_boot_entry_refused("no nvme-boot.conf")
+
+    def test_boot_entry_refuses_a_p12_with_another_partuuid(self):
+        self.split_disk()
+        (self.state / "p12-partuuid").write_text("11111111-2222-3333-4444-555555555555\n")
+        self.assert_boot_entry_refused("other PARTUUID")
+
+    def test_clone_refuses_when_sessions_cannot_be_listed(self):
+        # From Codex's re-review: a failing loginctl printed nothing and let the clone through
+        self.split_disk()
+        self.ok("create-root")
+        import shutil
+        shutil.rmtree(self.mnt)
+        self.mnt.mkdir()
+        (self.state / "loginctl-fails").touch()
+        r = self.run_step("clone")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertFalse(any(c.startswith("rsync") for c in self.calls()))
 
     def test_boot_entry_needs_an_initramfs_with_the_nvme_modules(self):
         # NVIDIA's kernel has the PCIe controller and NVMe as modules (Codex, Slice 4 review)
