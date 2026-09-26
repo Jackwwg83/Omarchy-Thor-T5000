@@ -28,9 +28,14 @@ Thor unless marked otherwise.
 the toolkit's own hook needs desktop `nvidia-utils` and reads `/usr/lib/libcuda.so`; it does not apply
 on the Thor and changes nothing. The Thor's spec comes from `raytone-thor-cdi.service`.
 
-## State
+## Final round (2026-09-26 22:28–22:35, owner at the Thor)
 
-- raytone-thor-omarchy 0.1.0-7 (CDI ordering) and raytone-thor-ollama 0.34.4-2 (video group) are built
-  and tested on the drive but not yet published (0.1.0-7 installed with `pacman -U`, the group added
-  with `usermod`): the next JetPack round publishes them.
-- Not in this slice: cuDNN, TensorRT; a longer thermal soak.
+| Check | Result |
+|---|---|
+| Group from the package, not by hand | the manual `video` membership removed first: the service fell back to `library=cpu`. raytone-thor-ollama 0.34.4-3 (and raytone-thor-omarchy 0.1.0-7) published from JetPack, installed by `omarchy-update -y` (rc=0, `pacman -Qem` empty): `groups=956(ollama),983(video)`; `library=CUDA description="NVIDIA Thor"`; qwen3:1.7b `100% GPU`, answer correct, 110 tok/s |
+| GPU container after a clean boot | smoke test in `nvcr.io/nvidia/cuda:13.2.0-runtime-ubuntu24.04`: 0 non-finite, max error 6.77e-05, PASS |
+| Package checks | `check_package.py` (loader paths followed through links: no system or stub directory, no Arch library shadowed) on all 22 packages: 0 problems |
+
+## Not in this slice
+
+cuDNN, TensorRT; a longer thermal soak (the one sustained run lasted 21 s).
