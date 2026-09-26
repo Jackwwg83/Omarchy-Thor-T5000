@@ -306,6 +306,23 @@ class InstallThorOmarchyTests(unittest.TestCase):
         (self.target / "var" / "lib" / "sddm" / "state.conf").symlink_to(victim)
         self.assert_refused_and_host_untouched({victim: "host\n"})
 
+    def test_a_planted_temporary_file_changes_nothing(self):
+        # the rewrite's temporary file is created fresh (Codex re-review): a link or a 0644 file
+        # planted under a predictable name neither redirects the write nor loosens the profile
+        nm = self.target / "etc" / "NetworkManager" / "system-connections"
+        nm.mkdir(parents=True)
+        f = nm / "home.nmconnection"
+        f.write_text("[connection]\nid=home\ntype=wifi\ninterface-name=wlP1p1s0\n")
+        f.chmod(0o600)
+        victim = pathlib.Path(self.tmp.name) / "host-file"
+        victim.write_text("host\n")
+        (nm / "home.nmconnection.raytone").symlink_to(victim)
+        self.write()
+        self.assertEqual(victim.read_text(), "host\n")
+        self.assertEqual(f.read_text(), "[connection]\nid=home\ntype=wifi\n")
+        self.assertFalse(f.is_symlink())
+        self.assertEqual(f.stat().st_mode & 0o777, 0o600)
+
     def test_a_wifi_profile_that_cannot_be_read_is_left_alone(self):
         # a failed rewrite (unreadable file, full disk) must not replace the profile with nothing
         nm = self.target / "etc" / "NetworkManager" / "system-connections"

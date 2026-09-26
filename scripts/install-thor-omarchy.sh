@@ -177,12 +177,14 @@ for f in "$MNT"/etc/NetworkManager/system-connections/*.nmconnection; do
   target_no_links "${f#"$MNT"}"
   [[ -r $f ]] || die "cannot read ${f#"$MNT"}; not unbinding it from JetPack's interface name"
   grep -qx 'type=wifi' "$f" || continue
+  # A fresh file (mktemp: new name, O_EXCL, 0600, as NetworkManager requires; the profile holds
+  # the PSK) that replaces the profile in one rename, or not at all.
+  tmp=$(mktemp "$f.XXXXXX") || die "cannot create a temporary file next to ${f#"$MNT"}"
   rc=0
-  (umask 077; grep -vE '^interface-name=' "$f" > "$f.raytone") || rc=$?  # the profile holds the PSK
+  grep -vE '^interface-name=' "$f" > "$tmp" || rc=$?
   # grep: 1 only means no line was left, which a profile never is; anything else is a failure
-  # the rewrite replaces the profile in one step (0600, as NetworkManager requires), or not at all
-  if ((rc > 1)) || [[ ! -s $f.raytone ]] || ! mv -f "$f.raytone" "$f"; then
-    rm -f "$f.raytone"
+  if ((rc > 1)) || [[ ! -s $tmp ]] || ! mv -f "$tmp" "$f"; then
+    rm -f "$tmp"
     die "rewriting ${f#"$MNT"} failed; it is left as it was"
   fi
 done
