@@ -3,7 +3,8 @@
 //
 //   nvcc -arch=sm_110 -O2 -o cuda-smoke tests/cuda-smoke.cu -lcublas && ./cuda-smoke
 //
-// Exit 0 only if every check passes; the output is the evidence.
+// Exit 0 only if every check passes; the output is the evidence. CUDA_SMOKE_INJECT_NAN=1 puts a
+// NaN into the SGEMM result, which must fail.
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -63,16 +64,21 @@ int main() {
   CHECK_BLAS(cublasSgemm(h, CUBLAS_OP_N, CUBLAS_OP_N, m, m, m, &one, a, m, b, m, &zero, c, m));
   CHECK(cudaDeviceSynchronize());
   ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+  if (std::getenv("CUDA_SMOKE_INJECT_NAN")) c[m + 1] = std::nanf("");  // negative check: must FAIL
+  // A NaN or Inf result fails outright: fmax would skip NaN and report a clean error.
   double max_err = 0;
+  int nonfinite = 0;
   for (int col = 0; col < m; col++)
     for (int row = 0; row < m; row++) {
       double ref = 0;
       for (int k = 0; k < m; k++) ref += (double)a[k * m + row] * (double)b[col * m + k];  // column-major
-      max_err = std::fmax(max_err, std::fabs(ref - c[col * m + row]));
+      float got = c[col * m + row];
+      if (!std::isfinite(got)) { nonfinite++; continue; }
+      max_err = std::fmax(max_err, std::fabs(ref - got));
     }
-  std::printf("cublas sgemm %dx%d: max abs error %.2e, %.2f ms\n", m, m, max_err, ms);
+  std::printf("cublas sgemm %dx%d: max abs error %.2e, %d non-finite, %.2f ms\n", m, m, max_err, nonfinite, ms);
   cublasDestroy(h);
-  if (max_err > 1e-2) { std::printf("FAIL sgemm error too large\n"); return 1; }
+  if (nonfinite || !(max_err <= 1e-2)) { std::printf("FAIL sgemm result wrong\n"); return 1; }
   std::printf("PASS\n");
   return 0;
 }
