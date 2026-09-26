@@ -41,7 +41,8 @@ class UserSetupTests(unittest.TestCase):
     def test_existing_omarchy_users_get_the_hook_and_the_menu(self):
         self.run_cmd()
         home = self.homes / "nvidia"
-        self.assertEqual((home / HOOK).read_text(), (PKG / "skel" / HOOK).read_text())
+        for hook in (HOOK, ".config/omarchy/hooks/post-boot.d/10-raytone-thor-menu"):
+            self.assertEqual((home / hook).read_text(), (PKG / "skel" / hook).read_text())
         self.assertIn("BEGIN raytone-thor", (home / MENU).read_text())
 
     def test_it_acts_as_the_user(self):
@@ -62,6 +63,22 @@ class UserSetupTests(unittest.TestCase):
         r = self.run_cmd()
         self.assertIn("nvidia", r.stderr)
         self.assertTrue((self.homes / "nvidia" / HOOK).exists())
+
+    def test_users_created_later_get_the_menu_at_login(self):
+        # /etc/skel carries a post-boot hook (Omarchy runs post-boot hooks at every session start,
+        # default/hypr/autostart.lua) that reapplies the hidden entries (Codex merge review)
+        hook = PKG / "skel" / ".config" / "omarchy" / "hooks" / "post-boot.d" / "10-raytone-thor-menu"
+        with tempfile.TemporaryDirectory() as t:
+            stub = pathlib.Path(t) / "raytone-thor-menu-extension"
+            stub.write_text('#!/bin/bash\necho ran >> "$CALLS"\n')
+            stub.chmod(0o755)
+            calls = pathlib.Path(t) / "calls"
+            r = subprocess.run(["bash", str(hook)], env=dict(os.environ, PATH=f"{t}:{os.environ['PATH']}",
+                               CALLS=str(calls)), capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(calls.read_text(), "ran\n")
+        text = (PKG / "PKGBUILD").read_text()
+        self.assertIn("etc/skel/.config/omarchy/hooks/post-boot.d/10-raytone-thor-menu", text)
 
     def test_the_package_runs_it_on_install_and_upgrade(self):
         text = (PKG / "raytone-thor-omarchy.install").read_text()

@@ -1,0 +1,4 @@
+# RaytoneOS Jetson AGX Thor: hide the Omarchy menu entries that cannot work on the Thor. Omarchy
+# runs post-boot hooks at every session start, so a user created after the Thor layer was
+# installed gets them at first login, and everyone gets a newer list after an upgrade.
+raytone-thor-menu-extension > /dev/null
