@@ -1,0 +1,35 @@
+# RaytoneOS: Ollama for Jetson AGX Thor, the official arm64 build, pinned by the release's sha256.
+# Its CUDA 13 backend is the one with code for the Thor's GPU (sm_110 as PTX, compiled by the driver
+# on first use); the CUDA 12 backend is removed (ollama#13033: picked on the Thor, cannot run there).
+# The backend brings its own CUDA runtime and cuBLAS; the driver (libcuda) is raytone-thor-core's.
+# The service is Arch ollama's shape, not enabled by the package: systemctl enable --now ollama.
+pkgname=raytone-thor-ollama
+pkgver=0.34.4
+pkgrel=1
+pkgdesc='Ollama (official arm64 build, CUDA 13 backend) for Jetson AGX Thor'
+arch=(aarch64)
+url='https://ollama.com'
+license=(MIT)
+depends=(raytone-thor-core)
+provides=("ollama=$pkgver")
+conflicts=(ollama ollama-cuda)
+options=(!strip !debug)
+source=("https://github.com/ollama/ollama/releases/download/v$pkgver/ollama-linux-arm64.tar.zst"
+        ollama.service ollama.sysusers)
+sha256sums=('96f50a1192133028cf4e010d8c333f8af14b1505db6be7b2034c11487e7fd7e6'
+            SKIP SKIP)
+noextract=(ollama-linux-arm64.tar.zst)
+
+package() {
+  install -d "$pkgdir/usr"
+  bsdtar -xf "$srcdir/ollama-linux-arm64.tar.zst" -C "$pkgdir/usr"
+  rm -rf "$pkgdir/usr/lib/ollama/cuda_v12"
+  test -x "$pkgdir/usr/bin/ollama"
+  test -d "$pkgdir/usr/lib/ollama/cuda_v13"
+  local l
+  for l in GO_LICENSE LLAMA_CPP_LICENSE LLAMA_CPP_VENDORS_LICENSE CPP_HTTPLIB_LICENSE; do
+    [[ -f $pkgdir/usr/lib/ollama/$l ]] && install -Dm644 "$pkgdir/usr/lib/ollama/$l" "$pkgdir/usr/share/licenses/$pkgname/$l"
+  done
+  install -Dm644 "$srcdir/ollama.service" "$pkgdir/usr/lib/systemd/system/ollama.service"
+  install -Dm644 "$srcdir/ollama.sysusers" "$pkgdir/usr/lib/sysusers.d/ollama.conf"
+}

@@ -1,0 +1,22 @@
+# RaytoneOS Jetson AGX Thor: Ollama on the GPU through its CUDA 13 backend (raytone-thor-ollama).
+[Unit]
+Description=Ollama Service (NVIDIA Thor, CUDA 13)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/ollama serve
+User=ollama
+Group=ollama
+StateDirectory=ollama
+Environment=HOME=/var/lib/ollama
+# sm_110 runs the backend's PTX, compiled by the driver on first use: keep that cache (default 256 MiB)
+Environment=CUDA_CACHE_MAXSIZE=4294967296
+# A very large CUDA allocation can take the whole board down (NVIDIA known issue 5699079): let the
+# kernel pick Ollama first when memory runs out.
+OOMScoreAdjust=500
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
