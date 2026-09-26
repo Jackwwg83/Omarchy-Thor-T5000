@@ -278,6 +278,34 @@ class InstallThorOmarchyTests(unittest.TestCase):
         self.assertEqual((nm / "home.nmconnection").stat().st_mode & 0o777, 0o600)
         self.assertEqual((nm / "lan.nmconnection").read_text(), wired)
 
+    # The installer writes into the drive's root as the host's root: a link on the drive must not
+    # send a write to the host (Codex merge review).
+    def assert_refused_and_host_untouched(self, host_files):
+        r = self.run_script("--write", "--confirm-serial", SERIAL)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("link", r.stderr)
+        for f, text in host_files.items():
+            self.assertEqual(f.read_text(), text)
+
+    def test_a_linked_etc_on_the_drive_is_refused(self):
+        host = pathlib.Path(self.tmp.name) / "host-etc"
+        host.mkdir()
+        (host / "resolv.conf").write_text("host resolver\n")
+        (host / "pacman.conf").write_text("host pacman\n")
+        (self.target / "etc" / "arch-release").unlink()
+        (self.target / "etc").rmdir()
+        (self.target / "etc").symlink_to(host)
+        (host / "arch-release").write_text("")
+        self.assert_refused_and_host_untouched({host / "resolv.conf": "host resolver\n",
+                                                host / "pacman.conf": "host pacman\n"})
+
+    def test_a_linked_file_the_installer_writes_is_refused(self):
+        victim = pathlib.Path(self.tmp.name) / "host-state"
+        victim.write_text("host\n")
+        (self.target / "var" / "lib" / "sddm").mkdir(parents=True)
+        (self.target / "var" / "lib" / "sddm" / "state.conf").symlink_to(victim)
+        self.assert_refused_and_host_untouched({victim: "host\n"})
+
     def test_a_wifi_profile_that_cannot_be_read_is_left_alone(self):
         # a failed rewrite (unreadable file, full disk) must not replace the profile with nothing
         nm = self.target / "etc" / "NetworkManager" / "system-connections"

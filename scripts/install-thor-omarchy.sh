@@ -113,6 +113,7 @@ repo_signing_key --create
 repo_publish "${PKG_FILES[@]}"
 
 # 2. Repositories and keys.
+target_no_links etc/pacman.conf etc/pacman.d/mirrorlist
 mkdir -p "$MNT/etc/pacman.d"
 install -m 0644 "$TEMPLATES/pacman.conf" "$MNT/etc/pacman.conf"
 install -m 0644 "$TEMPLATES/mirrorlist" "$MNT/etc/pacman.d/mirrorlist"
@@ -163,6 +164,7 @@ done
 
 # 5b. What Omarchy's ISO does after setup (omarchy-iso configure_login, unencrypted): the greeter is
 # password-only and logs in SDDM's last user, so seed it. No autologin: SDDM stays the auth screen.
+target_no_links etc/sddm.conf.d/99-omarchy-login.conf var/lib/sddm/state.conf etc/NetworkManager/system-connections
 install -d -m 0755 "$MNT/etc/sddm.conf.d" "$MNT/var/lib/sddm"
 printf '[Theme]\nCurrent=omarchy\n\n[Users]\nRememberLastUser=true\nRememberLastSession=true\n' \
   > "$MNT/etc/sddm.conf.d/99-omarchy-login.conf"
@@ -172,6 +174,7 @@ in_target chown sddm:sddm /var/lib/sddm /var/lib/sddm/state.conf
 # not the predictable name the profiles copied from JetPack are bound to. Unbind Wi-Fi profiles.
 for f in "$MNT"/etc/NetworkManager/system-connections/*.nmconnection; do
   [[ -f $f ]] || continue
+  target_no_links "${f#"$MNT"}"
   [[ -r $f ]] || die "cannot read ${f#"$MNT"}; not unbinding it from JetPack's interface name"
   grep -qx 'type=wifi' "$f" || continue
   rc=0
@@ -194,6 +197,7 @@ grep -qx "ENABLED=yes" "$MNT/etc/ufw/ufw.conf" || die "UFW is not enabled for th
 grep -qE "^### tuple ### allow tcp 22 " "$MNT/etc/ufw/user.rules" || die "firewall does not allow SSH (22/tcp)"
 grep -qE "^### tuple ### allow udp 5353 " "$MNT/etc/ufw/user.rules" || die "firewall does not allow mDNS (5353/udp)"
 cmp -s "$TEMPLATES/pacman.conf" "$MNT/etc/pacman.conf" || die "/etc/pacman.conf is not the Thor template after setup"
+target_no_links var/lib/raytone/installed-packages-omarchy.txt
 in_target pacman -Q > "$MNT/var/lib/raytone/installed-packages-omarchy.txt" 2>/dev/null || true
 sync
 echo "verified: packages, sddm and bring-up units, UFW with SSH and mDNS, pacman.conf"

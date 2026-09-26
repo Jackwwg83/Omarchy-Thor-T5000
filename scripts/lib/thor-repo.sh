@@ -23,14 +23,9 @@ repo_signing_key() {
 # The host (JetPack, as root) writes into the drive's repository, so a link on the drive must not
 # redirect those writes to the host: refuse links on the way to the repository and at each target.
 repo_no_links() {
-  local d=$MNT f
-  for f in var lib raytone repo; do
-    d=$d/$f
-    [[ ! -L $d ]] || die "${d#"$MNT"} on the drive is a link; refusing to write through it"
-  done
-  for f in "$@"; do
-    [[ ! -L $MNT$REPO/$f ]] || die "$REPO/$f on the drive is a link; refusing to write through it"
-  done
+  local f paths=("${REPO#/}")
+  for f in "$@"; do paths+=("${REPO#/}/$f"); done
+  target_no_links "${paths[@]}"
 }
 
 # repo_sign FILE: a detached signature by $fpr next to FILE; an existing one is kept only if it is

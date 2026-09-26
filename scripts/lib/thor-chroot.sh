@@ -9,8 +9,24 @@
 # stack and firewall (net_admin, net_raw): the chroot shares the running kernel.
 DROP_CAPS=-sys_module,-sys_rawio,-sys_boot,-sys_time,-bpf,-perfmon,-mac_admin,-mac_override,-syslog,-wake_alarm,-sys_admin,-sys_ptrace,-mknod,-kill,-net_admin,-net_raw
 
+# target_no_links REL...: the host writes into the drive's root as root, so a link on the drive could
+# send a write (or a mount) to the host. Refuse when any component of $MNT/REL below $MNT is a link.
+target_no_links() {
+  local rel d part parts
+  for rel in "$@"; do
+    d=$MNT
+    IFS=/ read -ra parts <<< "${rel#/}"
+    for part in "${parts[@]}"; do
+      [[ -n $part ]] || continue
+      d=$d/$part
+      [[ ! -L $d ]] || die "${d#"$MNT"} on the drive is a link; refusing to write through it"
+    done
+  done
+}
+
 thor_chroot_mount() {
   local n
+  target_no_links proc sys dev run tmp etc/resolv.conf
   mkdir -p "$MNT"/{proc,sys,dev,run,tmp}
   mount -t proc proc "$MNT/proc"
   # The kernel's tunables and sysrq belong to the running host: read-only inside.
