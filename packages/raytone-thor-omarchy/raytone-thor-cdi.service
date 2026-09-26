@@ -5,7 +5,9 @@
 # /run/cdi, one of Docker's CDI spec directories, so it always matches the installed files.
 [Unit]
 Description=Jetson AGX Thor: CDI spec for the GPU (CSV mode)
-After=local-fs.target
+# After NVIDIA's display stack is loaded: before it, DRM cards are renumbered and /dev/nvidia0 and
+# nvidia-uvm do not exist yet, and the spec would name devices that are gone.
+After=local-fs.target nv-load-display-modules.service
 Before=docker.service containerd.service
 
 [Service]
