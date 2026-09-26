@@ -1,0 +1,16 @@
+# RaytoneOS Jetson AGX Thor: the CDI spec that gives containers the GPU (docker run --device
+# nvidia.com/gpu=all). CSV mode, as for every integrated NVIDIA GPU: the CSV files in
+# /etc/nvidia-container-runtime/host-files-for-container.d (raytone-thor-core, with l4t.csv for
+# libcuda); entries that do not exist under OpenRM are skipped. Regenerated at every boot into
+# /run/cdi, one of Docker's CDI spec directories, so it always matches the installed files.
+[Unit]
+Description=Jetson AGX Thor: CDI spec for the GPU (CSV mode)
+After=local-fs.target
+Before=docker.service containerd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/nvidia-ctk cdi generate --mode=csv --output=/run/cdi/nvidia.yaml
+
+[Install]
+WantedBy=multi-user.target
