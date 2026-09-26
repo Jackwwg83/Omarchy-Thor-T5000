@@ -3,7 +3,7 @@
 # overrides (see raytone-omarchy-apply-system and overrides/UPSTREAM.sha256).
 pkgname=raytone-thor-omarchy
 pkgver=0.1.0
-pkgrel=8
+pkgrel=9
 pkgdesc='Jetson AGX Thor layer for Omarchy: display device, pacman repositories, install overrides'
 arch=(any)
 url='https://github.com/Jackwwg83/Omarchy-Thor-T5000'
@@ -19,7 +19,8 @@ _files=(raytone-omarchy-apply-system
         raytone-thor-user-setup
         raytone-thor-cdi.service
         raytone-thor-nvme-kernel-sync
-        90-raytone-thor-nvme-kernel.hook
+        95-raytone-thor-nvme-kernel.hook
+        mkinitcpio-raytone-thor-nvme.conf
         skel/.config/omarchy/hooks/pre-refresh-pacman.d/10-raytone-thor
         skel/.config/omarchy/hooks/post-boot.d/10-raytone-thor-menu
         overrides/UPSTREAM.sha256
@@ -40,7 +41,8 @@ package() {
   install -Dm755 "$s/raytone-thor-user-setup" "$pkgdir/usr/bin/raytone-thor-user-setup"
   install -Dm644 "$s/raytone-thor-cdi.service" "$pkgdir/usr/lib/systemd/system/raytone-thor-cdi.service"
   install -Dm755 "$s/raytone-thor-nvme-kernel-sync" "$pkgdir/usr/lib/raytone/raytone-thor-nvme-kernel-sync"
-  install -Dm644 "$s/90-raytone-thor-nvme-kernel.hook" "$pkgdir/usr/share/libalpm/hooks/90-raytone-thor-nvme-kernel.hook"
+  install -Dm644 "$s/95-raytone-thor-nvme-kernel.hook" "$pkgdir/usr/share/libalpm/hooks/95-raytone-thor-nvme-kernel.hook"
+  install -Dm644 "$s/mkinitcpio-raytone-thor-nvme.conf" "$pkgdir/etc/mkinitcpio.conf.d/raytone-thor-nvme.conf"
   install -d "$pkgdir/usr/lib/systemd/system/multi-user.target.wants"
   ln -s ../raytone-thor-cdi.service "$pkgdir/usr/lib/systemd/system/multi-user.target.wants/raytone-thor-cdi.service"
   install -Dm644 "$s/skel/.config/omarchy/hooks/pre-refresh-pacman.d/10-raytone-thor" \

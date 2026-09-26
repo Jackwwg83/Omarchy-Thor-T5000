@@ -1,0 +1,12 @@
+# RaytoneOS: Omarchy on the Thor's NVMe boots its kernel and initramfs from JetPack's APP partition.
+# 95-: after mkinitcpio's 90-mkinitcpio-install.hook has rebuilt the initramfs.
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Target = raytone-thor-linux
+
+[Action]
+Description = Copying the Thor kernel and initramfs to JetPack's APP partition (NVMe install only)
+When = PostTransaction
+Exec = /usr/lib/raytone/raytone-thor-nvme-kernel-sync
