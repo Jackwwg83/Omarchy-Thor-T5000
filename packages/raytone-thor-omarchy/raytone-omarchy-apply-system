@@ -1,0 +1,33 @@
+#!/bin/bash
+# RaytoneOS Thor: run upstream `omarchy-apply-system` with the Thor overrides.
+#
+#   raytone-omarchy-apply-system --install-user USER --first-install   (same arguments as upstream)
+#
+# The packaged Omarchy tree is never modified. Its install/ directory is copied to a temporary
+# directory, the files under overrides/install/ replace their upstream counterparts there, and
+# upstream runs with OMARCHY_INSTALL pointing at the copy. Each override is gated: overrides/
+# UPSTREAM.sha256 records the upstream file it was written against, and if that file has changed
+# (a new Omarchy release), nothing runs until the override has been reviewed and the hash updated.
+set -euo pipefail
+
+OMARCHY_PATH=${OMARCHY_PATH:-/usr/share/omarchy}
+OVERRIDES=${RAYTONE_OMARCHY_OVERRIDES:-/usr/share/raytone-thor/omarchy-overrides}
+die() { echo "raytone-omarchy-apply-system: $*" >&2; exit 1; }
+
+gate=$OVERRIDES/UPSTREAM.sha256
+[[ -f $gate ]] || die "no $gate"
+# Every override needs a recorded upstream hash.
+while IFS= read -r f; do
+  rel=${f#"$OVERRIDES"/}
+  grep -qE "^[0-9a-f]{64}  $rel\$" "$gate" || die "$rel has no recorded upstream hash in $gate"
+done < <(find "$OVERRIDES/install" -type f | sort)
+# Every recorded upstream file must be unchanged.
+changed=$(cd "$OMARCHY_PATH" && sha256sum -c --quiet "$gate" 2>&1) ||
+  die "upstream Omarchy changed files the Thor overrides replace; review them: $(echo "$changed" | tr '\n' ' ')"
+
+work=$(mktemp -d "${TMPDIR:-/tmp}/raytone-omarchy-install.XXXXXX")
+trap 'rm -rf "$work"' EXIT
+cp -a "$OMARCHY_PATH/install" "$work/install"
+(cd "$OVERRIDES" && find install -type f -print0 | while IFS= read -r -d '' rel; do cp -f "$rel" "$work/$rel"; done)
+
+OMARCHY_INSTALL=$work/install omarchy-apply-system "$@"

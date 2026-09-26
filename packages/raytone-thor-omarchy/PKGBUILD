@@ -1,0 +1,48 @@
+# RaytoneOS: the Jetson AGX Thor layer for upstream Omarchy. No upstream file is patched: this
+# package adds files next to Omarchy's and runs Omarchy's own installer with three reviewed
+# overrides (see raytone-omarchy-apply-system and overrides/UPSTREAM.sha256).
+pkgname=raytone-thor-omarchy
+pkgver=0.1.0
+pkgrel=5
+pkgdesc='Jetson AGX Thor layer for Omarchy: display device, pacman repositories, install overrides'
+arch=(any)
+url='https://github.com/Jackwwg83/Omarchy-Thor-T5000'
+license=(MIT)
+depends=(omarchy raytone-thor-graphics raytone-thor-nft-modules hyprland sddm uwsm)
+backup=(etc/sddm.conf.d/20-raytone-thor.conf)
+install=raytone-thor-omarchy.install
+# makepkg only takes local sources from this directory's top level, so the files are listed here and
+# copied from $startdir (this directory) by package().
+_files=(raytone-omarchy-apply-system
+        raytone-thor-pacman-restore
+        raytone-thor-menu-extension
+        raytone-thor-user-setup
+        skel/.config/omarchy/hooks/pre-refresh-pacman.d/10-raytone-thor
+        skel/.config/omarchy/hooks/post-boot.d/10-raytone-thor-menu
+        overrides/UPSTREAM.sha256
+        overrides/install/config/snapper.sh
+        overrides/install/hardware/nvidia.sh
+        overrides/install/post-install/pacman.sh
+        pacman/pacman.conf
+        pacman/mirrorlist
+        uwsm-env.d-20-raytone-thor
+        sddm-20-raytone-thor.conf)
+
+package() {
+  local s=$startdir o=$pkgdir/usr/share/raytone-thor/omarchy-overrides f
+  for f in "${_files[@]}"; do [[ -f $s/$f ]] || { echo "missing $f" >&2; return 1; }; done
+  install -Dm755 "$s/raytone-omarchy-apply-system" "$pkgdir/usr/bin/raytone-omarchy-apply-system"
+  install -Dm755 "$s/raytone-thor-pacman-restore" "$pkgdir/usr/bin/raytone-thor-pacman-restore"
+  install -Dm755 "$s/raytone-thor-menu-extension" "$pkgdir/usr/bin/raytone-thor-menu-extension"
+  install -Dm755 "$s/raytone-thor-user-setup" "$pkgdir/usr/bin/raytone-thor-user-setup"
+  install -Dm644 "$s/skel/.config/omarchy/hooks/pre-refresh-pacman.d/10-raytone-thor" \
+    "$pkgdir/etc/skel/.config/omarchy/hooks/pre-refresh-pacman.d/10-raytone-thor"
+  install -Dm644 "$s/skel/.config/omarchy/hooks/post-boot.d/10-raytone-thor-menu" \
+    "$pkgdir/etc/skel/.config/omarchy/hooks/post-boot.d/10-raytone-thor-menu"
+  install -Dm644 "$s/overrides/UPSTREAM.sha256" "$o/UPSTREAM.sha256"
+  (cd "$s/overrides" && find install -type f -exec install -Dm644 {} "$o/{}" \;)
+  install -Dm644 "$s/pacman/pacman.conf" "$pkgdir/usr/share/raytone-thor/pacman/pacman.conf"
+  install -Dm644 "$s/pacman/mirrorlist" "$pkgdir/usr/share/raytone-thor/pacman/mirrorlist"
+  install -Dm644 "$s/uwsm-env.d-20-raytone-thor" "$pkgdir/usr/share/uwsm/env.d/20-raytone-thor"
+  install -Dm644 "$s/sddm-20-raytone-thor.conf" "$pkgdir/etc/sddm.conf.d/20-raytone-thor.conf"
+}

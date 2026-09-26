@@ -1,0 +1,50 @@
+# RaytoneOS: nf_tables expressions that NVIDIA's L4T R39.2.1 kernel does not build
+# (# CONFIG_NFT_LIMIT is not set). Arch's iptables is iptables-nft, which turns ufw's `-m limit`
+# rules into the nf_tables limit expression; without nft_limit, iptables-restore fails on the first
+# such rule, and UFW (enabled by Omarchy) is left dropping all inbound traffic, SSH included.
+#
+# Built out of tree from NVIDIA's own sources for this kernel: the module source comes from
+# NVIDIA's R39.2.1 public_sources (kernel_src.tbz2, Canonical's linux-noble tree), and the build
+# tree and Module.symvers from NVIDIA's nvidia-l4t-kernel-headers deb (manifests/l4t-r39.2.1.json).
+# That kernel was built with Ubuntu's gcc 13; Arch's newer gcc builds these modules with only
+# kbuild's "compiler differs" warning, and the vermagic matches (docs/evidence/slice2/).
+pkgname=raytone-thor-nft-modules
+_kver=6.8.12-1021-tegra
+pkgver=6.8.12.l4t39.2.1
+pkgrel=1
+pkgdesc='nf_tables modules missing from NVIDIA L4T R39.2.1 kernel (nft_limit), for UFW on Jetson AGX Thor'
+arch=(aarch64)
+url='https://developer.nvidia.com/embedded/jetson-linux'
+license=(GPL-2.0-only)
+depends=(raytone-thor-linux)
+makedepends=(gcc make)
+options=(!strip !debug)
+_modules=(nft_limit)
+source=("nvidia-l4t-kernel-headers.deb::https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-kernel-headers/nvidia-l4t-kernel-headers_6.8.12-tegra-39.2.1-20260806224157_arm64.deb"
+        "l4t-r39.2.1-public_sources.tbz2::https://developer.download.nvidia.com/embedded/L4T/r39_Release_v2.1/sources/public_sources.tbz2")
+sha256sums=('e1c2bf37109913197b31293ce53ca642608fdb7f6d5859bfb372893fd721a17d'
+            '8346f0371649a92c42293b2d4a7bf3d69e4dd1de23009e1463ea910994a81371')
+noextract=(nvidia-l4t-kernel-headers.deb l4t-r39.2.1-public_sources.tbz2)
+
+prepare() {
+  rm -rf headers src-kernel modules && mkdir -p headers src-kernel modules
+  bsdtar -xOf nvidia-l4t-kernel-headers.deb 'data.tar.*' | bsdtar -xf - -C headers
+  bsdtar -xOf l4t-r39.2.1-public_sources.tbz2 Linux_for_Tegra/source/kernel_src.tbz2 |
+    bsdtar -xf - -C src-kernel $(printf 'kernel/kernel-noble/net/netfilter/%s.c ' "${_modules[@]}")
+  local m
+  for m in "${_modules[@]}"; do cp "src-kernel/kernel/kernel-noble/net/netfilter/$m.c" modules/; done
+  printf 'obj-m := %s\n' "${_modules[*]/%/.o}" > modules/Kbuild
+}
+
+build() {
+  local kdir=("$srcdir"/headers/usr/src/linux-headers-*/3rdparty/canonical/linux-noble)
+  [[ -f ${kdir[0]}/Module.symvers ]] || { echo "no kernel build tree in the headers deb" >&2; return 1; }
+  make -C "${kdir[0]}" M="$srcdir/modules" modules
+}
+
+package() {
+  local m
+  for m in "${_modules[@]}"; do
+    install -Dm644 "modules/$m.ko" "$pkgdir/usr/lib/modules/$_kver/updates/net/netfilter/$m.ko"
+  done
+}

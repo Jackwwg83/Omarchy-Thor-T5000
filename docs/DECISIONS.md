@@ -229,3 +229,59 @@ GRUB loading JetPack's own kernel and initrd directly, L4TLauncher never runs, s
 and JetPack boots normally: GDM, no failed units, `nvidia-smi`. The device tree is identical apart from
 `/chosen`. Decision: the Arch entries do not carry `bl_prof_*` (`thor_boot.cmdline` drops them, as it already
 did). Evidence: [attended/README.md](evidence/slice1b/attended/README.md), step 3.
+
+## 2026-09-25 — Slice 2: upstream Omarchy 4.0.4 with a thin Thor layer (consult point 6)
+
+Omarchy is installed from upstream's own recipes (omarchy-pkgs, pinned to v4.0.4), unpatched, and set up
+by upstream's `omarchy-apply-system` with four hash-gated overrides (nvidia, snapper, post-install pacman,
+firewall). The installer runs from JetPack in a namespace chroot, as Omarchy's ISO does with
+arch-chroot, with network and module capabilities dropped and `/proc/sys` read-only, so upstream's
+firewall step cannot touch JetPack's live firewall. Codex round 1 raised the host firewall, the ISO's
+x86_64 Node path in `provision-user`, the missing `/etc/skel` for an existing user, and the
+refresh-pacman/update bypass; the first three were fixed, the last is deferred to Slice 2.2. Round 2:
+go, with "do not click the update notification before 2.2".
+
+First boot found three faults that neither the stub tests nor the reviews caught (Codex had listed
+"a real UFW integration test" as optional): the greeter's empty user, the Wi-Fi profile bound to
+JetPack's interface name, and `nft_limit` missing from NVIDIA's kernel. Decision for the firewall
+(owner, option A of three): build the missing nf_tables module from NVIDIA's own R39.2.1 kernel
+source rather than editing ufw's rules or switching ufw to iptables-legacy, so upstream's rules stay
+unmodified. Evidence: [slice2/README.md](evidence/slice2/README.md).
+
+## 2026-09-26 — Slice 2.2, first night (owner away, no reboot)
+
+- **omarchy-update is left as upstream wrote it.** It only syncs against the configured repositories;
+  what rewrites pacman.conf is `omarchy-refresh-pacman` (also behind `omarchy-channel-set`), and its
+  `pre-refresh-pacman` hook puts the Thor's configuration back before the sync. The first real update
+  waits for a fresh backup and something to update (Codex: no-go before that).
+- **What Omarchy's ISO adds is part of "real Omarchy".** Omarchy's base list leaves the audio stack to
+  archinstall (PipeWire's ALSA plugin, pipewire-pulse), as it leaves SDDM's last user to the ISO; the
+  installer mirrors those ISO steps (`manifests/omarchy-iso-packages`, sources noted), in the ISO's
+  order. zram is not taken: a swap device would show Hibernate, which the Thor cannot do.
+- **The menu hides 24 entries**, each with evidence (`docs/evidence/slice2/menu.md`), through the
+  user's extension file, the only one Omarchy's shell reads; users that exist before an upgrade get it
+  and the pacman hook from the package's scriptlet (`raytone-thor-user-setup`).
+- **Bluetooth runs BlueZ as Arch and Omarchy expect**: NVIDIA's drop-in (Ubuntu path, audio plugins
+  off) is dropped from raytone-thor-firmware. The RTL8852BU adapter needs the vendor firmware the
+  JetPack install uses, pinned like the Wi-Fi firmware (next attended session).
+- **Codex review of the night's commits** found two P1 and three P2 issues, all fixed and confirmed
+  in re-review: host writes through links on the drive, the hook missing for existing users, an
+  unmatched menu marker deleting the user's entries, stale or untrusted signatures (now: key validity
+  in the drive's keyring, every package verified from a staging copy before the repository changes,
+  the verified copy is what gets published), and upstream-bump ignoring recipe-only changes and
+  closing the gate on rerun.
+
+## 2026-09-26 — Slice 2.3: Omarchy by default, dead-man retired; NVMe after Slice 3
+
+- **Default boot is Omarchy** (entries-2.json), JetPack second in a 3 s menu; the Slice 1 test entries
+  are gone, ids kept. A broken Omarchy loops until someone picks JetPack or unplugs the drive; the
+  owner accepts manual recovery because every reboot is attended. Codex: go (key action review).
+- **The dead-man timer is retired on the drive** (`disable --now` after creating the keep file, per
+  Codex, so it cannot fire mid-update). The installers still enable it for a fresh install's first,
+  unattended boots; retiring it is a commissioning step once the owner has accepted the boot.
+- **Headphone routing starts with the APE card** (udev), not sound.target, which starts with the
+  first card (Codex).
+- **Install to the NVMe (dual boot) after Slice 3** (owner, 2026-09-26): the USB drive stays the
+  test bed while CUDA/Docker/Ollama land, and the NVMe step, which lifts the "never write the NVMe
+  partition table or ESP" rule, gets its own plan, Codex review and approval, with a full JetPack
+  backup first.

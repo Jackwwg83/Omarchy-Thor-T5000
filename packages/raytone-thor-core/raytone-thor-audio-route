@@ -1,0 +1,14 @@
+#!/bin/bash
+# Jetson AGX Thor developer kit: make the headphone jack play. Its RT5640 codec ("CVB-RT") sits on
+# the APE's I2S4 (device tree: audio-codec@1c, link rt5640-playback). NVIDIA's defaults leave I2S4
+# unrouted and the codec's headphone channel off, and its documentation has users set them with
+# amixer; this does it at boot, the routing plus switches only, no volume (DAC1 0 dB, HP 31 as
+# the codec comes up). PipeWire's "Analog Stereo" output (the APE's ADMAIF1) then reaches the jack.
+set -euo pipefail
+s() { amixer -c APE -q sset "$@"; }
+s 'I2S4 Mux' ADMAIF1
+for c in 'CVB-RT DAC MIXL INF1' 'CVB-RT DAC MIXR INF1' 'CVB-RT Stereo DAC MIXL DAC L1' \
+         'CVB-RT Stereo DAC MIXR DAC R1' 'CVB-RT HPO MIX DAC1' 'CVB-RT HP L' 'CVB-RT HP R' \
+         'CVB-RT HP Channel'; do
+  s "$c" on
+done

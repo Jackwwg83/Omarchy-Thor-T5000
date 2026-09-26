@@ -1,0 +1,7 @@
+# RaytoneOS Omarchy on Jetson AGX Thor. Sourced by uwsm after /usr/share/uwsm/env.d/10-omarchy.
+#
+# The Thor has separate DRM devices for display (tegra264-display, driver nv_platform) and rendering
+# (the GPU, 10de:2b00). Hyprland must drive the display device; the port's Hyprland patch then
+# advertises the GPU's render node to clients. The by-path name comes from the device-tree address
+# and contains no ':' (AQ_DRM_DEVICES uses ':' as its separator).
+export AQ_DRM_DEVICES=/dev/dri/by-path/platform-8808c00000.display-card

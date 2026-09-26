@@ -1,0 +1,22 @@
+#!/bin/bash
+# Bring the Thor layer's per-user parts to every existing Omarchy user (a home with
+# ~/.config/omarchy): the pre-refresh-pacman and post-boot hooks and the menu's hidden entries. /etc/skel only
+# reaches users created later. Run as root by raytone-thor-omarchy.install on install and upgrade;
+# everything in a home is done as its owner.
+set -uo pipefail
+homes=${RAYTONE_HOMES:-/home}
+skel=${RAYTONE_SKEL:-/etc/skel}
+hooks=(.config/omarchy/hooks/pre-refresh-pacman.d/10-raytone-thor
+       .config/omarchy/hooks/post-boot.d/10-raytone-thor-menu)
+for home in "$homes"/*; do
+  [[ -d $home/.config/omarchy && ! -L $home ]] || continue
+  user=$(ls -ld "$home" | awk '{print $3}')
+  for hook in "${hooks[@]}"; do
+    { runuser -u "$user" -- mkdir -p "$(dirname "$home/$hook")" &&
+      runuser -u "$user" -- install -m 0644 "$skel/$hook" "$home/$hook"; } ||
+      echo "raytone-thor-user-setup: could not install ${hook##*/} for $user" >&2
+  done
+  runuser -u "$user" -- env HOME="$home" raytone-thor-menu-extension > /dev/null ||
+    echo "raytone-thor-user-setup: menu entries not hidden for $user (see above)" >&2
+done
+exit 0

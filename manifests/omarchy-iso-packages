@@ -1,0 +1,19 @@
+# Packages Omarchy's ISO installs beyond install/omarchy-base.packages, which a non-ISO install must
+# add itself (install-thor-omarchy.sh does). Sources, omarchy-iso at 86c07785:
+#   configs/airootfs/usr/share/omarchy-iso/orchestrator/phases_impl.py EARLY_BOOTSTRAP_BASE_PACKAGES
+#     and EARLY_LUAROCKS_PACKAGES
+#   archinstall's audio_config "pipewire" (archinstall/applications/audio.py pipewire_packages),
+#     which also links pipewire-pulse.{service,socket} into the user's default.target.wants
+# Not taken: limine, efibootmgr, amd-ucode, intel-ucode, sof-firmware, alsa-firmware (x86 boot and
+# firmware); zram-generator (a swap device would show the Hibernate entry, which the Thor cannot do).
+base-devel
+git
+lua51
+luarocks
+pipewire
+pipewire-alsa
+pipewire-jack
+pipewire-pulse
+gst-plugin-pipewire
+libpulse
+wireplumber

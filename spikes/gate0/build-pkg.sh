@@ -22,7 +22,12 @@ inside_build() {
   rm -rf "$ROOT$b" && cp -rL "$src" "$ROOT$b"
   chown -R 1000:1000 "$ROOT$b" "$ROOT/build/out" "$ROOT/build-home"
   # Dependencies as root (makepkg -s would need sudo inside the root).
-  [[ ${NODEPS:-} == 1 ]] || in_root bash -c "cd $b && source PKGBUILD && pacman -S --noconfirm --needed --asdeps \"\${depends[@]%%[<>=]*}\" \"\${makedepends[@]%%[<>=]*}\""
+  # NODEPS=1 skips runtime depends (they may live in repos the probe root lacks) but still installs makedepends.
+  if [[ ${NODEPS:-} == 1 ]]; then
+    in_root bash -c "cd $b && source PKGBUILD && ((\${#makedepends[@]} == 0)) || pacman -S --noconfirm --needed --asdeps \"\${makedepends[@]%%[<>=]*}\""
+  else
+    in_root bash -c "cd $b && source PKGBUILD && pacman -S --noconfirm --needed --asdeps \"\${depends[@]%%[<>=]*}\" \"\${makedepends[@]%%[<>=]*}\""
+  fi
   timeout 7200 chroot --userspec=1000:1000 "$ROOT" /usr/bin/env -i PATH=/usr/bin HOME=/build-home LANG=C.UTF-8 \
     MAKEFLAGS="-j$(nproc)" PKGDEST=/build/out bash -c "cd $b && makepkg --noconfirm --cleanbuild ${NODEPS:+--nodeps}" \
     > "$EVID/$name-makepkg.log" 2>&1

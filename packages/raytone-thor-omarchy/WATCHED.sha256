@@ -1,0 +1,2 @@
+# Upstream files the Thor layer mirrors rather than overrides; review the mirror when one changes.
+711c05e5cfa836ff25deaf433b521d975f026bc189a3cbb6892b9822297c90b6  etc/sddm.conf.d/10-wayland.conf

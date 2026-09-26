@@ -1,0 +1,3 @@
+# RaytoneOS Jetson AGX Thor: omarchy-refresh-pacman has just copied upstream's x86_64 pacman.conf and
+# mirrorlist; put the Thor's back before it syncs (see raytone-thor-pacman-restore).
+sudo /usr/bin/raytone-thor-pacman-restore

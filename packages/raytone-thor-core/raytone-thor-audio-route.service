@@ -1,0 +1,9 @@
+[Unit]
+Description=Jetson AGX Thor: route the APE to the headphone jack (RT5640 on I2S4)
+# Started by udev when the APE card appears (70-raytone-thor-audio-route.rules); after a saved
+# ALSA state is restored, so the routing is not overwritten.
+After=alsa-restore.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/raytone/raytone-thor-audio-route

@@ -1,0 +1,6 @@
+# Omarchy base packages (install/omarchy-base.packages) that have no aarch64 build, and what the
+# Thor installs instead. One entry per line: NAME REPLACEMENT, or NAME - to skip it.
+# Everything else in the base list is installed as upstream lists it.
+nvim neovim
+vi -
+obs-studio -
