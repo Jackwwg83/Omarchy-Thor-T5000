@@ -12,7 +12,7 @@ ids=(
   system.suspend
   install.service.dropbox install.service.spotify install.service.bitwarden
   install.browser.edge install.terminal.ghostty
-  install.ai.ollama install.ai.lm-studio install.ai.grok-bot install.ai.t3-code install.ai.hermes
+  install.ai.lm-studio install.ai.grok-bot install.ai.t3-code install.ai.hermes
   install.gaming.steam install.gaming.minecraft install.gaming.heroic install.gaming.lutris
   install.gaming.battlenet install.gaming.geforce-now install.gaming.retroarch install.gaming.xbox-controllers
   setup.direct-boot update.password.drive style.unlock update.config.plymouth update.firmware
@@ -23,7 +23,12 @@ end='  // END raytone-thor'
 mkdir -p "$(dirname "$file")"
 [[ -f $file ]] || printf '{\n}\n' > "$file"
 grep -q '^[[:space:]]*{[[:space:]]*$' "$file" || { echo "raytone-thor-menu-extension: no opening { line in $file" >&2; exit 1; }
-block=$(printf '%s\n' "$begin"; printf '  "%s": {"when":"false"},\n' "${ids[@]}"; printf '%s' "$end")
+# Entries that work on the Thor with its own package instead of upstream's.
+overrides=(
+  '"install.ai.ollama": {"action":"omarchy-install-app Ollama raytone-thor-ollama"},'
+)
+block=$(printf '%s\n' "$begin"; printf '  "%s": {"when":"false"},\n' "${ids[@]}"; printf '  %s\n' "${overrides[@]}"
+        printf '%s' "$end")
 tmp=$(mktemp "$file.XXXXXX")
 BLOCK=$block BEGIN_LINE=$begin END_LINE=$end awk '
   $0 == ENVIRON["BEGIN_LINE"] { skip = 1; next }
@@ -39,4 +44,4 @@ BLOCK=$block BEGIN_LINE=$begin END_LINE=$end awk '
 }
 cat "$tmp" > "$file"
 rm -f "$tmp"
-echo "Jetson AGX Thor: ${#ids[@]} menu entries hidden in $file"
+echo "Jetson AGX Thor: ${#ids[@]} menu entries hidden, ${#overrides[@]} pointed at Thor packages, in $file"

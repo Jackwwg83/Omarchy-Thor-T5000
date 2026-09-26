@@ -3,7 +3,7 @@
 # overrides (see raytone-omarchy-apply-system and overrides/UPSTREAM.sha256).
 pkgname=raytone-thor-omarchy
 pkgver=0.1.0
-pkgrel=5
+pkgrel=6
 pkgdesc='Jetson AGX Thor layer for Omarchy: display device, pacman repositories, install overrides'
 arch=(any)
 url='https://github.com/Jackwwg83/Omarchy-Thor-T5000'

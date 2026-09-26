@@ -44,11 +44,18 @@ class MenuExtensionTests(unittest.TestCase):
     def test_hides_what_cannot_work_on_the_thor(self):
         self.file.write_text(SKEL)
         menu = self.run_cmd()
-        for id_ in ("system.suspend", "install.gaming.steam", "install.terminal.ghostty", "install.ai.ollama",
+        for id_ in ("system.suspend", "install.gaming.steam", "install.terminal.ghostty",
                     "setup.direct-boot", "update.firmware", "style.unlock", "update.config.plymouth"):
             with self.subTest(id=id_):
                 self.assertEqual(menu[id_], {"when": "false"})
         self.assertEqual(len(menu), 24)
+
+    def test_ollama_installs_the_thor_build(self):
+        # upstream's entry picks ollama-cuda/ollama, which do not exist for aarch64; the Thor's
+        # package is raytone-thor-ollama (Slice 3.2). The label, icon and when stay upstream's.
+        self.file.write_text(SKEL)
+        menu = self.run_cmd()
+        self.assertEqual(menu["install.ai.ollama"], {"action": "omarchy-install-app Ollama raytone-thor-ollama"})
 
     def test_keeps_the_users_own_entries_and_lets_them_win(self):
         self.file.write_text('{\n  "personal": {"label":"Personal"},\n  "system.suspend": {"when":"true"}\n}\n')
