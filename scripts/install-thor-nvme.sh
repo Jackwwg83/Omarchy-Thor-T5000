@@ -9,8 +9,9 @@
 #                start, PARTUUID, type, name; RAYTONE_OMARCHY takes the rest), then e2fsck again
 #   create-root  mkfs.ext4 on RAYTONE_OMARCHY (refused when it already holds a filesystem)
 #   clone        the running root (the USB drive's Omarchy) into RAYTONE_OMARCHY, fstab moved to it
-#   boot-entry   the kernel to APP's /boot/raytone-thor/, extlinux.conf.jetpack kept, and the omarchy
-#                L4TLauncher entry added and made the default (thor_nvme.py extlinux)
+#   boot-entry   the kernel and an initramfs with the PCIe and NVMe modules to APP's /boot/raytone-thor/,
+#                extlinux.conf.jetpack kept, and the omarchy L4TLauncher entry added and made the
+#                default (thor_nvme.py extlinux), each file written in full and renamed into place
 #
 # Runs as root on the Thor booted from the USB drive: the running root must not be on the NVMe, and
 # no NVMe partition may be mounted. Every step checks the NVMe's identity (serial, size) and that
@@ -26,6 +27,10 @@ APP_GIB=950
 APP_PARTUUID=1b3479b0-b4c2-4a1b-8b81-86d864b3944e
 KERNEL_SRC=${RAYTONE_KERNEL_SRC:-/boot/vmlinuz-raytone-thor-linux}
 KERNEL_DST=/boot/raytone-thor/Image
+INITRD_SRC=${RAYTONE_INITRD_SRC:-/boot/initramfs-raytone-thor-linux.img}
+INITRD_DST=/boot/raytone-thor/initrd
+SYS=${RAYTONE_SYS:-/sys}
+SERVICES=(ollama docker containerd)
 MNT=${RAYTONE_NVME_MOUNT:-/mnt/raytone-nvme}
 SRC_ROOT=${RAYTONE_SOURCE_ROOT:-/}
 PY=${RAYTONE_PYTHON:-python3}
@@ -70,8 +75,25 @@ state() {
 }
 need_state() { local s; s=$(state) || exit 1; [[ $s == "$1" ]] || die "$step needs the $1 table, the NVMe has the $s one"; }
 backup_ok() {
-  [[ -f $backup/nvme-gpt.sfdisk && -f $backup/jetpack-app.tar.gz.sha256 && -f $backup/extlinux.conf ]] ||
-    die "no complete backup in $backup (run backup first)"
+  [[ -f $backup/backup-complete && -f $backup/nvme-gpt.sfdisk && -f $backup/jetpack-app.tar.gz &&
+     -f $backup/jetpack-app.tar.gz.sha256 && -f $backup/extlinux.conf ]] || die "no complete backup in $backup (run backup first)"
+  (cd "$backup" && sha256sum -c --quiet jetpack-app.tar.gz.sha256) || die "the APP archive in $backup does not match its sha256"
+}
+# the kernel's view of a partition must be what the table says (partx refreshed it)
+kernel_sees() {
+  local n=$1 start=$2 size=$3 b
+  b=$SYS/class/block/$(basename "$(p "$n")")
+  [[ $(cat "$b/start" 2>/dev/null) == "$start" && $(cat "$b/size" 2>/dev/null) == "$size" ]] ||
+    die "the kernel does not see $(p "$n") at $start+$size; reboot from the USB drive and rerun"
+}
+part_field() { sed -n "s|^.*p$1 : .*$2= *\([^,]*\).*|\1|p" "$work/current.sfdisk"; }
+# write SRC to DST in full, flush it, then rename it into place
+put() {
+  install -m 0644 "$1" "$2.raytone-new"
+  sync "$2.raytone-new" 2>/dev/null || sync
+  cmp -s "$1" "$2.raytone-new" || die "$2 did not write back"
+  mv -f "$2.raytone-new" "$2"
+  sync
 }
 omarchy_uuid() {
   [[ -f $backup/omarchy-partuuid ]] || die "no $backup/omarchy-partuuid (shrink-app writes it)"
@@ -96,13 +118,19 @@ case $step in
     if ((write)); then
       install -d -m 0700 "$backup"
       cp "$work/current.sfdisk" "$backup/nvme-gpt.sfdisk"
+      rm -f "$backup/backup-complete"
       mount -o ro,noload "$(p 1)" "$MNT"
       cp "$MNT/boot/extlinux/extlinux.conf" "$backup/extlinux.conf"
-      (cd "$MNT" && tar --numeric-owner --xattrs --acls -czpf "$backup/jetpack-app.tar.gz" .) ||
-        echo "tar reported errors (sockets are skipped); see the check below" >&2
+      # any tar error fails the backup (sockets, which tar cannot archive, are only a warning)
+      (cd "$MNT" && tar --numeric-owner --xattrs --acls --warning=no-file-ignored -czpf "$backup/jetpack-app.tar.gz.part" .) ||
+        die "tar failed; the backup is not usable"
       umount "$MNT"
-      gzip -t "$backup/jetpack-app.tar.gz" || die "the APP backup does not read back"
+      gzip -t "$backup/jetpack-app.tar.gz.part" || die "the APP archive does not read back"
+      [[ $(tar -tzf "$backup/jetpack-app.tar.gz.part" | grep -c "^./boot/extlinux/extlinux.conf$") == 1 ]] ||
+        die "the APP archive lacks /boot/extlinux/extlinux.conf"
+      mv -f "$backup/jetpack-app.tar.gz.part" "$backup/jetpack-app.tar.gz"
       (cd "$backup" && sha256sum jetpack-app.tar.gz > jetpack-app.tar.gz.sha256)
+      date -u +%FT%TZ > "$backup/backup-complete"
       echo "backed up: $backup (partition table, APP, extlinux.conf)"
     else
       echo "would back up the partition table, APP (read-only mount) and extlinux.conf into $backup"
@@ -112,6 +140,8 @@ case $step in
     need_state original
     backup_ok
     cmp -s "$work/current.sfdisk" "$backup/nvme-gpt.sfdisk" || die "the table changed since the backup"
+    [[ $(dumpe2fs -h "$(p 1)" 2>/dev/null | awk -F: '/^Block size/{gsub(/ /,"",$2); print $2}') == 4096 ]] ||
+      die "APP's ext4 block size is not 4096; the resize2fs block count would be wrong"
     used=$(( $(dumpe2fs -h "$(p 1)" 2>/dev/null | awk -F: '/^Block count/{b=$2} /^Free blocks/{f=$2} END{print b-f}') * 4096 ))
     [[ -f $backup/omarchy-partuuid ]] || { ((write)) && uuidgen | tr 'a-z' 'A-Z' > "$backup/omarchy-partuuid"; }
     uuid=$( [[ -f $backup/omarchy-partuuid ]] && cat "$backup/omarchy-partuuid" || echo 00000000-0000-4000-8000-000000000000)
@@ -122,14 +152,19 @@ case $step in
     run resize2fs "$(p 1)" "$blocks"
     run sfdisk --no-reread --no-tell-kernel "$dev" < "$work/split.sfdisk"
     if ((write)); then
-      partx -u "$dev" || true
+      partx -u "$dev" || die "the kernel did not take the new table (partx); reboot from the USB drive, then check"
       [[ $(state || true) == split ]] || die "the table did not come out split; restore: sfdisk $dev < $backup/nvme-gpt.sfdisk"
+      kernel_sees 1 "$(part_field 1 start)" "$(part_field 1 size)"
+      kernel_sees 12 "$(part_field 12 start)" "$(part_field 12 size)"
       e2fsck -f -n "$(p 1)" || die "APP does not check clean after the shrink"
       echo "APP: $APP_GIB GiB, PARTUUID $APP_PARTUUID; RAYTONE_OMARCHY: PARTUUID $uuid"
     fi
     ;;
   create-root)
     need_state split
+    uuid=$(omarchy_uuid)
+    kernel_sees 12 "$(part_field 12 start)" "$(part_field 12 size)"
+    [[ $(blkid -o value -s PARTUUID "$(p 12)" 2>/dev/null) == "$uuid" ]] || die "$(p 12) is not PARTUUID $uuid"
     if [[ -n $(blkid -o value -s TYPE "$(p 12)" 2>/dev/null) ]]; then
       die "$(p 12) already holds a filesystem; not reformatting it"
     fi
@@ -140,18 +175,38 @@ case $step in
     uuid=$(omarchy_uuid)
     [[ $(blkid -o value -s TYPE "$(p 12)" 2>/dev/null) == ext4 ]] || die "$(p 12) has no ext4 (run create-root)"
     if ((write)); then
+      [[ ! -e $SRC_ROOT/var/lib/pacman/db.lck ]] || die "pacman is running (db.lck); let it finish"
+      stopped=()
+      for s in "${SERVICES[@]}"; do
+        if systemctl is-active --quiet "$s"; then systemctl stop "$s"; stopped+=("$s"); fi
+      done
+      trap 'umount "$MNT" 2>/dev/null || true; rm -rf "$work"; for s in "${stopped[@]}"; do systemctl start "$s" || true; done' EXIT
       mount -o noatime "$(p 12)" "$MNT"
-      [[ -z $(ls -A "$MNT" | grep -vx lost+found) || -f $MNT/.raytone-cloned ]] || die "$(p 12) holds something else"
+      # a clone that stopped half way resumes: the marker names the partition it was writing
+      if [[ -n $(ls -A "$MNT" | grep -vxE 'lost\+found|\.raytone-cloning|\.raytone-cloned') ]]; then
+        [[ $(cat "$MNT/.raytone-cloning" 2>/dev/null) == "$uuid" || $(cat "$MNT/.raytone-cloned" 2>/dev/null) == "$uuid" ]] ||
+          die "$(p 12) holds something that is not this clone"
+      fi
+      # the backup (53 GB of JetPack) stays on the USB drive, wherever it is under the source root
+      src_real=$(readlink -f "$SRC_ROOT"); src_real=${src_real%/}; bk_real=$(readlink -f "$backup"); backup_exclude=()
+      [[ $bk_real == "$src_real"/* ]] && backup_exclude=("--exclude=${bk_real#"$src_real"}/")
+      rm -f "$MNT/.raytone-cloned"
+      echo "$uuid" > "$MNT/.raytone-cloning"
+      sync
+      for pass in 1 2; do
+      echo "+ rsync pass $pass"
       rsync -aHAXS --numeric-ids --delete --one-file-system \
         --exclude=/proc/* --exclude=/sys/* --exclude=/dev/* --exclude=/run/* --exclude=/tmp/* --exclude=/mnt/* \
-        --exclude=/var/lib/raytone/nvme-backup/ --exclude=/home/*/cudatest/ --exclude=/home/*/ollamatest/ \
-        --exclude=/home/*/nftspike/ --exclude=/home/*/nctktest/ --exclude=/.raytone-cloned \
+        "${backup_exclude[@]}" --exclude=/home/*/cudatest/ --exclude=/home/*/ollamatest/ \
+        --exclude=/home/*/nftspike/ --exclude=/home/*/nctktest/ --exclude=/.raytone-cloned --exclude=/.raytone-cloning \
         "$SRC_ROOT/" "$MNT/"
+      done
       planner fstab --in "$MNT/etc/fstab" --root-partuuid "$uuid" > "$work/fstab"
       install -m 0644 "$work/fstab" "$MNT/etc/fstab"
       install -d "$MNT/etc/raytone"
       printf 'APP_PARTUUID=%s\nKERNEL=%s\n' "$APP_PARTUUID" "$KERNEL_DST" > "$MNT/etc/raytone/nvme-boot.conf"
-      date -u +%FT%TZ > "$MNT/.raytone-cloned"
+      echo "$uuid" > "$MNT/.raytone-cloned"
+      rm -f "$MNT/.raytone-cloning"
       sync
       umount "$MNT"
       echo "cloned: $SRC_ROOT into $(p 12) (PARTUUID $uuid), fstab moved"
@@ -163,19 +218,24 @@ case $step in
     need_state split
     uuid=$(omarchy_uuid)
     [[ -f $KERNEL_SRC ]] || die "no kernel at $KERNEL_SRC"
+    [[ -f $INITRD_SRC ]] || die "no initramfs at $INITRD_SRC"
+    for m in pcie-tegra264.ko nvme.ko nvme-core.ko; do
+      lsinitcpio "$INITRD_SRC" | grep -q "/$m" || die "$INITRD_SRC lacks $m (mkinitcpio -P after installing raytone-thor-omarchy)"
+    done
     if ((write)); then
       mount -o noatime "$(p 1)" "$MNT"
       for d in boot boot/extlinux boot/extlinux/extlinux.conf boot/raytone-thor; do
         [[ ! -L $MNT/$d ]] || die "/$d on APP is a link"
       done
       planner extlinux --in "$MNT/boot/extlinux/extlinux.conf" --root-partuuid "$uuid" --kernel "$KERNEL_DST" \
-        > "$work/extlinux.conf" || die "APP's extlinux.conf is not the recorded one; nothing changed"
+        --initrd "$INITRD_DST" > "$work/extlinux.conf" || die "APP's extlinux.conf is not the recorded one; nothing changed"
       [[ -e $MNT/boot/extlinux/extlinux.conf.jetpack ]] || cp -p "$MNT/boot/extlinux/extlinux.conf" "$MNT/boot/extlinux/extlinux.conf.jetpack"
       cmp -s "$MNT/boot/extlinux/extlinux.conf.jetpack" "$backup/extlinux.conf" || die "extlinux.conf.jetpack is not the backed-up file"
       mkdir -p "$(dirname "$MNT$KERNEL_DST")"
-      install -m 0644 "$KERNEL_SRC" "$MNT$KERNEL_DST"
-      install -m 0644 "$work/extlinux.conf" "$MNT/boot/extlinux/extlinux.conf"
-      sync
+      # kernel and initramfs first, each in full; the menu changes last, in one rename
+      put "$KERNEL_SRC" "$MNT$KERNEL_DST"
+      put "$INITRD_SRC" "$MNT$INITRD_DST"
+      put "$work/extlinux.conf" "$MNT/boot/extlinux/extlinux.conf"
       umount "$MNT"
       echo "L4TLauncher: omarchy (default, root PARTUUID $uuid) and JetPack's primary; original in extlinux.conf.jetpack"
     else

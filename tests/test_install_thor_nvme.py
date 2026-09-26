@@ -33,12 +33,29 @@ STUB = textwrap.dedent("""\
       findmnt) cat "$STATE/root" ;;
       sfdisk)
         if [[ " $* " == *" --dump "* ]]; then cat "$STATE/table"; else cat > "$STATE/table"; fi ;;
-      dumpe2fs) printf 'Block count:              499400777\\nFree blocks:              477712108\\n' ;;
-      blkid) cat "$STATE/blkid" 2>/dev/null ;;
+      dumpe2fs) printf 'Block count:              499400777\\nFree blocks:              477712108\\nBlock size:               %s\\n' "$(cat "$STATE/blocksize" 2>/dev/null || echo 4096)" ;;
+      blkid)
+        if [[ " $* " == *" PARTUUID "* ]]; then cat "$STATE/p12-partuuid" 2>/dev/null; else cat "$STATE/blkid" 2>/dev/null; fi ;;
       mkfs.ext4) echo ext4 > "$STATE/blkid" ;;
       uuidgen) echo "$UUIDGEN" ;;
-      tar) for a in "$@"; do [[ $prev == -czpf ]] && out=$a; prev=$a; done; echo app | gzip > "$out" ;;
-      sha256sum) for f in "$@"; do echo "0000  $f"; done ;;
+      partx)
+        [[ -f $STATE/partx-fails ]] && exit 1
+        # the kernel's view after a refresh: start and size of each partition in the table
+        sed -n 's|^.*p\\([0-9]*\\) : start= *\\([0-9]*\\), size= *\\([0-9]*\\).*|\\1 \\2 \\3|p' "$STATE/table" |
+          while read -r n st sz; do d=$RAYTONE_SYS/class/block/nvme0n1p$n; mkdir -p "$d"; echo "$st" > "$d/start"; echo "$sz" > "$d/size"; done ;;
+      lsinitcpio) cat "$STATE/initrd-list" ;;
+      systemctl)
+        case $1 in
+          is-active) [[ -f $STATE/active-$3 ]] ;;
+          stop) rm -f "$STATE/active-$2" ;;
+        esac; exit $? ;;
+      tar)
+        if [[ $1 == -tzf ]]; then [[ -f $STATE/tar-list-bad ]] || echo ./boot/extlinux/extlinux.conf; exit 0; fi
+        [[ -f $STATE/tar-fails ]] && exit 2
+        for a in "$@"; do [[ $prev == -czpf ]] && out=$a; prev=$a; done; echo app | gzip > "$out" ;;
+      sha256sum)
+        if [[ $1 == -c ]]; then [[ -f $STATE/sha-bad ]] && exit 1; exit 0; fi
+        for f in "$@"; do echo "0000  $f"; done ;;
       rsync) for a in "$@"; do dst=$a; done; mkdir -p "$dst/etc"; cp "$SRC/etc/fstab" "$dst/etc/fstab" ;;
     esac
     exit 0
@@ -53,7 +70,7 @@ class InstallThorNvmeTests(unittest.TestCase):
         for d in (self.state, self.bin, self.mnt, self.src / "etc", self.src / "boot"):
             d.mkdir(parents=True)
         for tool in ("lsblk", "findmnt", "sfdisk", "e2fsck", "resize2fs", "dumpe2fs", "blkid", "mkfs.ext4", "mount",
-                     "umount", "partx", "uuidgen", "tar", "sha256sum", "rsync"):
+                     "umount", "partx", "uuidgen", "tar", "sha256sum", "rsync", "lsinitcpio", "systemctl"):
             (self.bin / tool).write_text(STUB)
             (self.bin / tool).chmod(0o755)
         dev = t / "dev"
@@ -67,6 +84,12 @@ class InstallThorNvmeTests(unittest.TestCase):
         (self.state / "table").write_text(DUMP)
         (self.src / "etc" / "fstab").write_text("PARTUUID=ca5a56c6-4a4b-4e02-8183-ff166514ae3b / ext4 defaults,noatime 0 1\n")
         (self.src / "boot" / "vmlinuz-raytone-thor-linux").write_bytes(b"kernel")
+        (self.src / "boot" / "initramfs-raytone-thor-linux.img").write_bytes(b"initramfs")
+        (self.state / "p12-partuuid").write_text(UUID.lower() + "\n")
+        (self.state / "initrd-list").write_text("usr/lib/modules/k/updates/drivers/pci/controller/pcie-tegra264.ko\n"
+                                                "usr/lib/modules/k/kernel/drivers/nvme/host/nvme.ko\n"
+                                                "usr/lib/modules/k/kernel/drivers/nvme/host/nvme-core.ko\n")
+        self.sys = t / "sys"
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -74,7 +97,8 @@ class InstallThorNvmeTests(unittest.TestCase):
     def run_step(self, step, *args, write=True):
         env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}", STATE=str(self.state), SRC=str(self.src),
                    UUIDGEN=UUID, RAYTONE_SKIP_ROOT_CHECK="1", RAYTONE_NVME_MOUNT=str(self.mnt),
-                   RAYTONE_SOURCE_ROOT=str(self.src), RAYTONE_KERNEL_SRC=str(self.src / "boot" / "vmlinuz-raytone-thor-linux"))
+                   RAYTONE_SOURCE_ROOT=str(self.src), RAYTONE_KERNEL_SRC=str(self.src / "boot" / "vmlinuz-raytone-thor-linux"),
+                   RAYTONE_INITRD_SRC=str(self.src / "boot" / "initramfs-raytone-thor-linux.img"), RAYTONE_SYS=str(self.sys))
         extra = ["--write", "--confirm-serial", SERIAL] if write else []
         return subprocess.run(["bash", str(SCRIPT), step, "--nvme", str(self.link), "--serial", SERIAL,
                                "--backup-dir", str(self.backup), *extra, *args], env=env, capture_output=True, text=True)
@@ -179,6 +203,84 @@ class InstallThorNvmeTests(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertFalse([c for c in self.calls() if c.startswith("resize2fs")])
 
+    # Codex, Slice 4 review
+    def test_a_failing_tar_leaves_no_backup(self):
+        (self.state / "tar-fails").touch()
+        (self.mnt / "boot" / "extlinux").mkdir(parents=True)
+        (self.mnt / "boot" / "extlinux" / "extlinux.conf").write_text(EXTLINUX)
+        r = self.run_step("backup")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertFalse((self.backup / "backup-complete").exists())
+        r = self.run_step("shrink-app")
+        self.assertNotEqual(r.returncode, 0)
+
+    def test_shrink_rechecks_the_archive(self):
+        self.make_backup()
+        (self.state / "sha-bad").touch()
+        r = self.run_step("shrink-app")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("sha256", r.stderr)
+        self.assertFalse([c for c in self.calls() if c.startswith("resize2fs")])
+
+    def test_shrink_needs_4k_blocks(self):
+        self.make_backup()
+        (self.state / "blocksize").write_text("1024")
+        r = self.run_step("shrink-app")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertFalse([c for c in self.calls() if c.startswith("resize2fs")])
+
+    def test_a_failed_kernel_refresh_stops(self):
+        self.make_backup()
+        (self.state / "partx-fails").touch()
+        r = self.run_step("shrink-app")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("partx", r.stderr)
+
+    def test_create_root_checks_the_kernels_view_and_the_partuuid(self):
+        self.split_disk()
+        (self.state / "p12-partuuid").write_text("ffffffff-0000-0000-0000-000000000000\n")
+        r = self.run_step("create-root")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertFalse([c for c in self.calls() if c.startswith("mkfs.ext4")])
+        (self.state / "p12-partuuid").write_text(UUID.lower() + "\n")
+        (self.sys / "class" / "block" / "nvme0n1p12" / "size").write_text("1\n")
+        r = self.run_step("create-root")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("kernel does not see", r.stderr)
+
+    def test_clone_stops_writers_and_refuses_a_running_pacman(self):
+        self.split_disk()
+        self.ok("create-root")
+        import shutil
+        shutil.rmtree(self.mnt)
+        self.mnt.mkdir()
+        (self.src / "var" / "lib" / "pacman").mkdir(parents=True)
+        (self.src / "var" / "lib" / "pacman" / "db.lck").touch()
+        r = self.run_step("clone")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("pacman", r.stderr)
+        (self.src / "var" / "lib" / "pacman" / "db.lck").unlink()
+        (self.state / "active-ollama").touch()
+        self.ok("clone")
+        calls = self.calls()
+        self.assertLess(calls.index("systemctl stop ollama"), next(i for i, c in enumerate(calls) if c.startswith("rsync")))
+        self.assertEqual(len([c for c in calls if c.startswith("rsync")]), 2)
+        self.assertIn("systemctl start ollama", calls)
+        self.assertEqual((self.mnt / ".raytone-cloned").read_text().strip(), UUID.lower())
+
+    def test_an_interrupted_clone_resumes_but_foreign_content_is_refused(self):
+        self.split_disk()
+        self.ok("create-root")
+        import shutil
+        shutil.rmtree(self.mnt)
+        self.mnt.mkdir()
+        (self.mnt / "half").write_text("x")
+        r = self.run_step("clone")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("not this clone", r.stderr)
+        (self.mnt / ".raytone-cloning").write_text(UUID.lower() + "\n")
+        self.ok("clone")
+
     # create-root, clone
     def test_create_root_needs_the_split_table_and_an_empty_partition(self):
         r = self.run_step("create-root")
@@ -211,8 +313,19 @@ class InstallThorNvmeTests(unittest.TestCase):
         ext = self.mnt / "boot" / "extlinux"
         self.assertEqual((ext / "extlinux.conf.jetpack").read_text(), EXTLINUX)
         self.assertEqual((ext / "extlinux.conf").read_text(),
-                         nv.add_omarchy_entry(EXTLINUX, UUID.lower(), "/boot/raytone-thor/Image"))
+                         nv.add_omarchy_entry(EXTLINUX, UUID.lower(), "/boot/raytone-thor/Image", "/boot/raytone-thor/initrd"))
         self.assertEqual((self.mnt / "boot" / "raytone-thor" / "Image").read_bytes(), b"kernel")
+        self.assertEqual((self.mnt / "boot" / "raytone-thor" / "initrd").read_bytes(), b"initramfs")
+        self.assertFalse(list(self.mnt.rglob("*.raytone-new")))
+
+    def test_boot_entry_needs_an_initramfs_with_the_nvme_modules(self):
+        # NVIDIA's kernel has the PCIe controller and NVMe as modules (Codex, Slice 4 review)
+        self.split_disk()
+        (self.state / "initrd-list").write_text("usr/lib/modules/k/kernel/drivers/nvme/host/nvme.ko\n")
+        r = self.run_step("boot-entry")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("pcie-tegra264", r.stderr)
+        self.assertEqual((self.mnt / "boot" / "extlinux" / "extlinux.conf").read_text(), EXTLINUX)
 
     def test_boot_entry_refuses_an_unrecorded_extlinux(self):
         self.split_disk()

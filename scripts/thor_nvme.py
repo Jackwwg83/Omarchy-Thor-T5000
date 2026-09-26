@@ -4,7 +4,7 @@
     thor_nvme.py check  --dump FILE                        original | split, or refuse
     thor_nvme.py split  --dump FILE --app-gib N --uuid U [--app-used-bytes B]   new sfdisk dump
     thor_nvme.py app-blocks --dump FILE                    APP's size in 4 KiB blocks (resize2fs)
-    thor_nvme.py extlinux --in FILE --root-partuuid U --kernel PATH             new extlinux.conf
+    thor_nvme.py extlinux --in FILE --root-partuuid U --kernel PATH --initrd PATH   new extlinux.conf
     thor_nvme.py fstab --in FILE --root-partuuid U                              new fstab
 
 The NVMe holds NVIDIA's layout: ten small partitions at the start (recovery, ESP, reserved) and
@@ -14,9 +14,10 @@ type and name, and a new partition RAYTONE_OMARCHY takes the rest. Nothing else 
 
 JetPack's L4TLauncher reads APP's /boot/extlinux/extlinux.conf (recorded as
 manifests/jetpack-extlinux-2026-09-26.conf) and offers its entries for TIMEOUT tenths of a second;
-an omarchy entry is added first and made the default, its command line derived from JetPack's
-primary entry (root swapped, read-only as the USB boot, rootwait bounded, panic=10), and JetPack's
-entry is left byte for byte. No ESP, UEFI variable or firmware is involved.
+an omarchy entry is added first and made the default, with an initramfs (NVIDIA's kernel has the
+PCIe controller and NVMe as modules, as JetPack's own initrd shows), its command line derived from
+JetPack's primary entry (root swapped, read-only, rootwait bounded, panic=10), and JetPack's entry is
+left byte for byte. GPT attributes are kept and compared; unknown sfdisk fields are refused. No ESP, UEFI variable or firmware is involved.
 """
 import argparse
 import dataclasses
@@ -44,6 +45,7 @@ class Part:
     type: str
     uuid: str
     name: str
+    attrs: str = ""
 
 
 @dataclasses.dataclass
@@ -79,10 +81,16 @@ def parse_dump(text):
         m = LINE_RE.match(line)
         if not m:
             raise LayoutError(f"unreadable sfdisk line: {line}")
-        f = dict(re.findall(r'(\w+)=\s*("[^"]*"|[^,]+)', m.group("fields")))
+        fields = [x.strip() for x in re.findall(r'(?:[^,"]|"[^"]*")+', m.group("fields"))]
+        f = {}
+        for field in fields:
+            k, eq, v = field.partition("=")
+            if not eq or k not in ("start", "size", "type", "uuid", "name", "attrs"):
+                raise LayoutError(f"sfdisk field {field!r} is not one the port knows: {line}")
+            f[k] = v.strip()
         try:
-            parts.append(Part(int(m.group("n")), int(f["start"]), int(f["size"]), f["type"].strip(),
-                              f["uuid"].strip(), f.get("name", '""').strip().strip('"')))
+            parts.append(Part(int(m.group("n")), int(f["start"]), int(f["size"]), f["type"],
+                              f["uuid"], f.get("name", '""').strip('"'), f.get("attrs", '""').strip('"')))
         except KeyError as e:
             raise LayoutError(f"sfdisk line without {e}: {line}") from None
         device = m.group("dev")
@@ -93,8 +101,9 @@ def parse_dump(text):
 def render_dump(t):
     out = [f"{k}: {v}" for k, v in t.header.items()] + [""]
     for p in sorted(t.parts, key=lambda p: p.number):
+        attrs = f', attrs="{p.attrs}"' if p.attrs else ""
         out.append(f'{t.device}p{p.number} : start={p.start:>12}, size={p.size:>12}, type={p.type}, '
-                   f'uuid={p.uuid}, name="{p.name}"')
+                   f'uuid={p.uuid}, name="{p.name}"{attrs}')
     return "\n".join(out) + "\n"
 
 
@@ -112,15 +121,15 @@ def check_layout(t, recorded=None):
         if t.part(n) != rec.part(n):
             raise LayoutError(f"partition {n} differs from the recorded layout")
     app, rapp = t.part(1), rec.part(1)
-    if (app.start, app.type, app.uuid, app.name) != (rapp.start, rapp.type, rapp.uuid, rapp.name):
-        raise LayoutError("APP's start, type, PARTUUID or name differs from the recorded layout")
+    if (app.start, app.type, app.uuid, app.name, app.attrs) != (rapp.start, rapp.type, rapp.uuid, rapp.name, rapp.attrs):
+        raise LayoutError("APP's start, type, PARTUUID, name or attributes differ from the recorded layout")
     numbers = sorted(p.number for p in t.parts)
     if numbers == list(range(1, 12)) and app.size == rapp.size:
         return "original"
     if numbers == list(range(1, 13)):
         root = t.part(12)
         if (root.start == app.start + app.size and root.start + root.size - 1 == t.last_lba
-                and root.name == ROOT_NAME and root.type == LINUX_FS):
+                and root.name == ROOT_NAME and root.type == LINUX_FS and not root.attrs):
             return "split"
     raise LayoutError("the table is neither the recorded layout nor the recorded layout split for Omarchy")
 
@@ -180,15 +189,17 @@ def omarchy_args(primary_args, root_partuuid):
             + ["panic=10", "systemd.gpt_auto=0"])
 
 
-def add_omarchy_entry(text, root_partuuid, kernel):
+def add_omarchy_entry(text, root_partuuid, kernel, initrd):
     if text != RECORDED_EXTLINUX.read_text():
         raise LayoutError("extlinux.conf is not the one recorded (manifests/jetpack-extlinux-2026-09-26.conf)")
-    if not re.fullmatch(r"[0-9a-f-]{36}", root_partuuid) or not re.fullmatch(r"/boot/[A-Za-z0-9._/-]+", kernel):
-        raise LayoutError("bad PARTUUID or kernel path")
+    path = r"/boot/[A-Za-z0-9._/-]+"
+    if not re.fullmatch(r"[0-9a-f-]{36}", root_partuuid) or not re.fullmatch(path, kernel) or not re.fullmatch(path, initrd):
+        raise LayoutError("bad PARTUUID, kernel or initrd path")
     args = " ".join(omarchy_args(_primary_append(text), root_partuuid))
     block = ("LABEL omarchy\n"
              "      MENU LABEL RaytoneOS Omarchy (NVMe)\n"
              f"      LINUX {kernel}\n"
+             f"      INITRD {initrd}\n"
              f"      APPEND {args}\n\n")
     if "\nDEFAULT primary\n" not in "\n" + text:
         raise LayoutError("no DEFAULT primary line")
@@ -218,6 +229,7 @@ def main(argv):
     b = sub.add_parser("app-blocks"); b.add_argument("--dump", required=True)
     e = sub.add_parser("extlinux"); e.add_argument("--in", dest="inp", required=True)
     e.add_argument("--root-partuuid", required=True); e.add_argument("--kernel", required=True)
+    e.add_argument("--initrd", required=True)
     f = sub.add_parser("fstab"); f.add_argument("--in", dest="inp", required=True); f.add_argument("--root-partuuid", required=True)
     a = ap.parse_args(argv)
     try:
@@ -230,7 +242,7 @@ def main(argv):
             check_layout(t)
             print(app_blocks(t.part(1)))
         elif a.cmd == "extlinux":
-            print(add_omarchy_entry(pathlib.Path(a.inp).read_text(), a.root_partuuid, a.kernel), end="")
+            print(add_omarchy_entry(pathlib.Path(a.inp).read_text(), a.root_partuuid, a.kernel, a.initrd), end="")
         elif a.cmd == "fstab":
             print(retarget_fstab(pathlib.Path(a.inp).read_text(), a.root_partuuid), end="")
     except LayoutError as err:

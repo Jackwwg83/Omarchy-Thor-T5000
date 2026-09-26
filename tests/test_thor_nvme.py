@@ -41,6 +41,23 @@ class LayoutTests(unittest.TestCase):
                     nv.check_layout(nv.parse_dump(text))
 
 
+class AttributeTests(unittest.TestCase):
+    # From Codex's Slice 4 review: GPT attributes were parsed away, so a changed APP still read
+    # as the recorded layout and the split dropped them.
+    def test_attributes_are_part_of_the_layout(self):
+        text = DUMP.replace('name="APP"', 'name="APP", attrs="RequiredPartition"')
+        with self.assertRaises(nv.LayoutError):
+            nv.check_layout(nv.parse_dump(text))
+
+    def test_attributes_survive_a_render(self):
+        text = DUMP.replace('name="UDA"', 'name="UDA", attrs="GUID:63"')
+        self.assertIn('attrs="GUID:63"', nv.render_dump(nv.parse_dump(text)))
+
+    def test_unknown_fields_are_refused(self):
+        with self.assertRaises(nv.LayoutError):
+            nv.parse_dump(DUMP.replace('name="UDA"', 'name="UDA", bootable'))
+
+
 class SplitTests(unittest.TestCase):
     def split(self):
         return nv.split(nv.parse_dump(DUMP), app_gib=950, new_uuid=NEW_UUID)
@@ -91,7 +108,8 @@ class SplitTests(unittest.TestCase):
 
 class ExtlinuxTests(unittest.TestCase):
     def add(self):
-        return nv.add_omarchy_entry(EXTLINUX, root_partuuid=NEW_UUID.lower(), kernel="/boot/raytone-thor/Image")
+        return nv.add_omarchy_entry(EXTLINUX, root_partuuid=NEW_UUID.lower(), kernel="/boot/raytone-thor/Image",
+                                    initrd="/boot/raytone-thor/initrd")
 
     def test_jetpack_entry_is_unchanged_byte_for_byte(self):
         new = self.add()
@@ -106,7 +124,9 @@ class ExtlinuxTests(unittest.TestCase):
     def test_omarchy_entry_boots_its_partition_from_jetpacks_command_line(self):
         e = nv.entry(self.add(), "omarchy")
         self.assertIn("      LINUX /boot/raytone-thor/Image", e)
-        self.assertNotIn("INITRD", e)
+        # NVIDIA's kernel has the PCIe controller and NVMe as modules: an initramfs loads them
+        # (Codex, Slice 4 review; JetPack's own initrd carries the same modules)
+        self.assertIn("      INITRD /boot/raytone-thor/initrd", e)
         append = next(l for l in e.splitlines() if l.strip().startswith("APPEND"))
         args = append.split()[1:]
         self.assertEqual(args[0], "${cbootargs}")
@@ -120,12 +140,14 @@ class ExtlinuxTests(unittest.TestCase):
 
     def test_adding_twice_is_refused(self):
         with self.assertRaises(nv.LayoutError):
-            nv.add_omarchy_entry(self.add(), root_partuuid=NEW_UUID.lower(), kernel="/boot/raytone-thor/Image")
+            nv.add_omarchy_entry(self.add(), root_partuuid=NEW_UUID.lower(), kernel="/boot/raytone-thor/Image",
+                                 initrd="/boot/raytone-thor/initrd")
 
     def test_the_file_must_be_the_one_recorded(self):
         with self.assertRaises(nv.LayoutError):
             nv.add_omarchy_entry(EXTLINUX.replace("DEFAULT primary", "DEFAULT backup"),
-                                 root_partuuid=NEW_UUID.lower(), kernel="/boot/raytone-thor/Image")
+                                 root_partuuid=NEW_UUID.lower(), kernel="/boot/raytone-thor/Image",
+                                 initrd="/boot/raytone-thor/initrd")
 
 
 class FstabTests(unittest.TestCase):
