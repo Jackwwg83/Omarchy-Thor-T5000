@@ -7,7 +7,8 @@ Each STAGE is one unpacked data.tar. Paths move to Arch's merged-/usr layout (/l
 /usr/sbin under /usr), systemd units and udev rules move from /etc to /usr/lib, Debian's enablement
 symlinks (*.wants) and metadata are dropped, and copyright files become license files. Anything the
 port prohibits (boot-loader, OTA, capsule, partition and first-boot items; see l4t_manifest.py) is
-dropped and reported. Two stages writing the same target path is an error. The report lists every
+dropped and reported. Two stages writing the same target path is an error, unless both carry the
+same symlink. The report lists every
 kept and dropped path, for the package-content tests and the evidence.
 """
 import argparse
@@ -86,13 +87,19 @@ def repack(stages, out, pkgname, exclude=()):
                     dropped[rel] = reason
                     continue
                 target = map_path(rel, pkgname=pkgname, exclude=exclude)
+                link = _retarget(os.readlink(src)) if src.is_symlink() else None
                 if target in origin:
-                    raise RepackError(f"{target} comes from both {origin[target]} and {stage}{rel}")
-                origin[target] = f"{stage}{rel}"
+                    # Debs of one family may each carry the same symlink (CUDA's include -> targets/...):
+                    # identical links are one path; anything else is a real conflict.
+                    first, first_link = origin[target]
+                    if link is not None and link == first_link:
+                        continue
+                    raise RepackError(f"{target} comes from both {first} and {stage}{rel}")
+                origin[target] = (f"{stage}{rel}", link)
                 dest = out / target.lstrip("/")
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                if src.is_symlink():
-                    os.symlink(_retarget(os.readlink(src)), dest)
+                if link is not None:
+                    os.symlink(link, dest)
                 else:
                     shutil.copy2(src, dest)
                 kept.append(target)
