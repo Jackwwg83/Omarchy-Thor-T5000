@@ -1,0 +1,27 @@
+#!/bin/bash
+# Omarchy on the Thor's NVMe boots through JetPack's L4TLauncher, which loads the kernel from
+# JetPack's APP partition (/boot/raytone-thor/Image, install-thor-nvme.sh boot-entry). After a
+# raytone-thor-linux upgrade, copy the new kernel there. On the USB drive (no nvme-boot.conf) and
+# anywhere else, nothing happens. Run by 90-raytone-thor-nvme-kernel.hook.
+set -euo pipefail
+conf=${RAYTONE_NVME_BOOT_CONF:-/etc/raytone/nvme-boot.conf}
+modules=${RAYTONE_MODULES:-/usr/lib/modules}
+mnt=${RAYTONE_APP_MOUNT:-/run/raytone-app}
+[[ -f $conf ]] || exit 0
+APP_PARTUUID='' KERNEL=''
+# shellcheck source=/dev/null
+source "$conf"
+[[ $APP_PARTUUID =~ ^[0-9a-f-]{36}$ && $KERNEL == /boot/raytone-thor/* ]] || { echo "raytone: bad $conf" >&2; exit 1; }
+src=''
+for k in "$modules"/*/pkgbase; do
+  [[ $(cat "$k") == raytone-thor-linux ]] && src=$(dirname "$k")/vmlinuz
+done
+[[ -f $src ]] || { echo "raytone: no raytone-thor-linux kernel under $modules" >&2; exit 1; }
+mkdir -p "$mnt"
+mount -o noatime "/dev/disk/by-partuuid/$APP_PARTUUID" "$mnt"
+trap 'umount "$mnt"' EXIT
+[[ -d $mnt${KERNEL%/*} && ! -L $mnt${KERNEL%/*} ]] || { echo "raytone: APP has no ${KERNEL%/*} (not the port's layout)" >&2; exit 1; }
+install -m 0644 "$src" "$mnt$KERNEL.new"
+mv -f "$mnt$KERNEL.new" "$mnt$KERNEL"
+sync
+echo "raytone: $src copied to JetPack's APP $KERNEL (L4TLauncher's omarchy entry)"

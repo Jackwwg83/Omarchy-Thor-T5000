@@ -1,0 +1,11 @@
+# RaytoneOS: Omarchy on the Thor's NVMe boots its kernel from JetPack's APP partition.
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Target = raytone-thor-linux
+
+[Action]
+Description = Copying the Thor kernel to JetPack's APP partition (NVMe install only)
+When = PostTransaction
+Exec = /usr/lib/raytone/raytone-thor-nvme-kernel-sync
