@@ -14,6 +14,7 @@ DROP_CAPS=-sys_module,-sys_rawio,-sys_boot,-sys_time,-bpf,-perfmon,-mac_admin,-m
 target_no_links() {
   local rel d part parts
   for rel in "$@"; do
+    [[ $rel != *$'\n'* ]] || die "a path with a newline cannot be checked for links: ${rel@Q}"
     d=$MNT
     IFS=/ read -ra parts <<< "${rel#/}"
     for part in "${parts[@]}"; do

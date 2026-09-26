@@ -37,7 +37,9 @@ done
 resolve_usb_disk
 ((${#PKG_FILES[@]})) || die "name at least one package file to publish"
 for f in "${PKG_FILES[@]}"; do
-  [[ -f $f && $f =~ \.pkg\.tar\.(xz|zst)$ ]] || die "not a package file: ${f##*/}"
+  # a plain package file name: pacman's name-version-release-arch characters only
+  name=${f##*/}
+  [[ -f $f && $name =~ ^[A-Za-z0-9@._+-]+\.pkg\.tar\.(xz|zst)$ ]] || die "not a package file: $(printf %q "$name")"
 done
 
 MNT=${RAYTONE_TARGET_MOUNT:-/mnt/raytone-target}

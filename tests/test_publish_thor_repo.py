@@ -225,6 +225,17 @@ class PublishThorRepoTests(unittest.TestCase):
                 self.assertEqual(victim.read_text(), "host")
                 (repo / link).unlink()
 
+    def test_package_names_must_be_plain(self):
+        # a newline would cut the link check short (Codex re-review); only plain package file names
+        for bad in ("evil\nname-1-1-any.pkg.tar.xz", "sp ace-1-1-any.pkg.tar.xz", "x;y-1-1-any.pkg.tar.xz"):
+            with self.subTest(name=repr(bad)):
+                f = self.pkgs / bad
+                f.write_bytes(b"pkg")
+                r = self.run_script("--write", "--confirm-serial", SERIAL, files=[f])
+                self.assertNotEqual(r.returncode, 0)
+                self.assertIn("package file", r.stderr)
+                self.assertFalse([c for c in self.calls() if c.startswith("mount")])
+
     def test_a_linked_repository_directory_is_refused(self):
         elsewhere = pathlib.Path(self.tmp.name) / "elsewhere"
         elsewhere.mkdir()

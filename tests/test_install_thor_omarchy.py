@@ -299,6 +299,13 @@ class InstallThorOmarchyTests(unittest.TestCase):
         self.assert_refused_and_host_untouched({host / "resolv.conf": "host resolver\n",
                                                 host / "pacman.conf": "host pacman\n"})
 
+    def test_the_link_check_refuses_a_path_with_a_newline(self):
+        r = subprocess.run(["bash", "-c", f"die() {{ echo \"$*\" >&2; exit 1; }}; MNT={self.target}; "
+                            f"source {ROOT}/scripts/lib/thor-chroot.sh; target_no_links $'etc/a\\nb'"],
+                           capture_output=True, text=True)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("newline", r.stderr)
+
     def test_a_linked_file_the_installer_writes_is_refused(self):
         victim = pathlib.Path(self.tmp.name) / "host-state"
         victim.write_text("host\n")
