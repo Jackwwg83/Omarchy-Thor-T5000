@@ -171,10 +171,17 @@ in_target chown sddm:sddm /var/lib/sddm /var/lib/sddm/state.conf
 # Omarchy's aarch64 dependency iwd ships 80-iwd.link (NamePolicy=keep kernel): Wi-Fi is wlan0 here,
 # not the predictable name the profiles copied from JetPack are bound to. Unbind Wi-Fi profiles.
 for f in "$MNT"/etc/NetworkManager/system-connections/*.nmconnection; do
-  [[ -f $f ]] && grep -qx 'type=wifi' "$f" || continue
-  (umask 077; grep -vE '^interface-name=' "$f" > "$f.raytone") || true  # the profile holds the PSK
-  cat "$f.raytone" > "$f"
-  rm -f "$f.raytone"
+  [[ -f $f ]] || continue
+  [[ -r $f ]] || die "cannot read ${f#"$MNT"}; not unbinding it from JetPack's interface name"
+  grep -qx 'type=wifi' "$f" || continue
+  rc=0
+  (umask 077; grep -vE '^interface-name=' "$f" > "$f.raytone") || rc=$?  # the profile holds the PSK
+  # grep: 1 only means no line was left, which a profile never is; anything else is a failure
+  # the rewrite replaces the profile in one step (0600, as NetworkManager requires), or not at all
+  if ((rc > 1)) || [[ ! -s $f.raytone ]] || ! mv -f "$f.raytone" "$f"; then
+    rm -f "$f.raytone"
+    die "rewriting ${f#"$MNT"} failed; it is left as it was"
+  fi
 done
 
 # 6. Verify.

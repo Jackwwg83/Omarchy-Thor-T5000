@@ -278,6 +278,21 @@ class InstallThorOmarchyTests(unittest.TestCase):
         self.assertEqual((nm / "home.nmconnection").stat().st_mode & 0o777, 0o600)
         self.assertEqual((nm / "lan.nmconnection").read_text(), wired)
 
+    def test_a_wifi_profile_that_cannot_be_read_is_left_alone(self):
+        # a failed rewrite (unreadable file, full disk) must not replace the profile with nothing
+        nm = self.target / "etc" / "NetworkManager" / "system-connections"
+        nm.mkdir(parents=True)
+        f = nm / "home.nmconnection"
+        f.write_text("[connection]\nid=home\ntype=wifi\ninterface-name=wlP1p1s0\n")
+        f.chmod(0o200)  # unreadable: the installer cannot tell whether, or how, to rewrite it
+        try:
+            r = self.run_script("--write", "--confirm-serial", SERIAL)
+        finally:
+            f.chmod(0o600)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("home.nmconnection", r.stderr)
+        self.assertEqual(f.read_text(), "[connection]\nid=home\ntype=wifi\ninterface-name=wlP1p1s0\n")
+
     def test_install_is_verified(self):
         for unit in ("sddm", "raytone-deadman.timer"):
             with self.subTest(unit=unit):
