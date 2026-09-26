@@ -1,0 +1,19 @@
+[
+  {
+    "id": "raytone-arch",
+    "title": "RaytoneOS Omarchy (USB drive)",
+    "fs_uuid": "4ae3be9c-9ec7-4507-b6ac-33c46734dfa5",
+    "kernel": "/boot/vmlinuz-raytone-thor-linux",
+    "initrd": null,
+    "cmdline": "root=PARTUUID=ca5a56c6-4a4b-4e02-8183-ff166514ae3b ro rootwait=20 rootfstype=ext4 mminit_loglevel=4 earlycon=tegra_utc,mmio32,0xc5a0000 console=ttyUTC0,115200 firmware_class.path=/etc/firmware fbcon=map:0 efi=runtime audit=1 audit_backlog_limit=8192 swiotlb=2048 video=efifb:off console=tty0 panic=10 systemd.gpt_auto=0"
+  },
+  {
+    "id": "jetpack-nvme",
+    "title": "JetPack on the internal NVMe",
+    "fs_uuid": "2BBE-D8EC",
+    "kernel": null,
+    "initrd": null,
+    "cmdline": "",
+    "chainload": "/EFI/BOOT/BOOTAA64.efi"
+  }
+]
