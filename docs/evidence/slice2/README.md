@@ -74,3 +74,13 @@ upstream's `omarchy-screensaver` (it exits on keyboard input or loss of focus), 
 | Bluetooth | **real data** | NVIDIA's `rtk_btusb` with the vendor firmware: `load_firmware done`, `download_data done`, controller `Powered: yes`; the owner's phone paired, bonded, trusted, connected (A2DP source offered). Bluetooth audio output not tested (no Bluetooth headset) |
 | HDMI audio | **real data** | this boot the ELD is valid (`monitor_present 1`); `HDMI1` sink available; a test tone heard through the monitor's headphone jack (the monitor has no speakers). The earlier empty ELD looked like a boot-order race; watch it |
 | Headphone jack on the Thor | **real data** by hand; boot service **code** | RT5640 on I2S4 (device tree `audio-codec@1c` → `i2s@92b0000`, prefix I2S4); `I2S4 Mux` was None and the codec's HP channel off. With `I2S4 Mux=ADMAIF1` and the HP path switched on, the test tone was heard. `raytone-thor-audio-route.service` (raytone-thor-core 39.2.1-4) does that at boot; run by hand on the Thor it switched `HP Channel` off→on; not yet built or published |
+
+## Slice 2.3 (2026-09-26 16:18–16:25, owner at the Thor)
+
+| Item | State | Evidence |
+|---|---|---|
+| raytone-thor-core 39.2.1-4 (headphone routing at boot) | **real data** | built on JetPack (`check_package.py` 0 problems), published, installed by the second `omarchy-update -y` (rc=0; `pacman -Qem` empty; pacman.conf the Thor template) |
+| Boot menu | **real data** | `install-thor-boot.sh install --entries docs/evidence/slice2/entries-2.json --default raytone-arch` then `publish`, both rc=0; menu: "RaytoneOS Omarchy (USB drive)" (default), "JetPack on the internal NVMe", retry, UEFI menu |
+| Omarchy by default | **real data** | reboot with no key pressed: Omarchy up, SSH 66 s after the reboot command; twice |
+| Dead-man retired | **real data** | `/run/raytone-keep` first, then `systemctl disable --now raytone-deadman.timer`: disabled / inactive; the next boot ran with no keep file and was not rebooted. The thermal guard stays enabled and active. Recovery is by hand: JetPack in GRUB's 3 s menu, or unplug the drive |
+| Headphone routing at boot | **real data** (state); by ear pending | `raytone-thor-audio-route.service` started by udev with the APE card, `Finished`; after boot `I2S4 Mux` = ADMAIF1, `CVB-RT HP Channel Switch` = on,on |

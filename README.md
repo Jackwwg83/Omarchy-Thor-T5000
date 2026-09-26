@@ -19,8 +19,8 @@ kernel with out-of-tree modules. The kernel, drivers and boot chain here are the
 | Gate 0 | Arch userspace against L4T graphics: GBM, EGL, Vulkan on "NVIDIA Thor"; patched Hyprland on HDMI at 2560×1440; clients on the GPU | done ([evidence](docs/evidence/gate0b/README.md)) |
 | Slice 1a | GRUB on the USB drive chainloads JetPack, or boots JetPack's kernel directly; same device tree and command line | done, attended ([evidence](docs/evidence/slice1b/attended/README.md)) |
 | Slice 1b | Arch Linux ARM boots from the USB drive on NVIDIA's L4T kernel with no initramfs: GPU (`nvidia-smi`), Wi-Fi, fan control, hardware watchdog, efivarfs read-only | done, attended, 2026-09-25 (warm and cold boots, dead-man fallback, unplug test) ([evidence](docs/evidence/slice1b/attended/README.md)) |
-| Slice 2 | The Omarchy desktop: SDDM → Hyprland + Quickshell, audio, Bluetooth | next |
-| Slice 3 | CUDA 13 (sm_110), Docker with GPU through CDI, Ollama | planned |
+| Slice 2 | Upstream Omarchy 4.0.4 unmodified, with a hash-gated Thor layer: SDDM → Hyprland + Quickshell on the NVIDIA GPU, HDMI and headphone audio, Bluetooth, `omarchy-update` from the port's signed repository; boots Omarchy by default | done, attended, 2026-09-26 ([evidence](docs/evidence/slice2/README.md), [following upstream](docs/UPSTREAM-SYNC.md)) |
+| Slice 3 | CUDA 13 (sm_110), Docker with GPU through CDI, Ollama | next |
 
 Plan: [docs/PLAN.md](docs/PLAN.md). Every design decision and review: [docs/DECISIONS.md](docs/DECISIONS.md).
 

@@ -270,3 +270,18 @@ unmodified. Evidence: [slice2/README.md](evidence/slice2/README.md).
   in the drive's keyring, every package verified from a staging copy before the repository changes,
   the verified copy is what gets published), and upstream-bump ignoring recipe-only changes and
   closing the gate on rerun.
+
+## 2026-09-26 — Slice 2.3: Omarchy by default, dead-man retired; NVMe after Slice 3
+
+- **Default boot is Omarchy** (entries-2.json), JetPack second in a 3 s menu; the Slice 1 test entries
+  are gone, ids kept. A broken Omarchy loops until someone picks JetPack or unplugs the drive; the
+  owner accepts manual recovery because every reboot is attended. Codex: go (key action review).
+- **The dead-man timer is retired on the drive** (`disable --now` after creating the keep file, per
+  Codex, so it cannot fire mid-update). The installers still enable it for a fresh install's first,
+  unattended boots; retiring it is a commissioning step once the owner has accepted the boot.
+- **Headphone routing starts with the APE card** (udev), not sound.target, which starts with the
+  first card (Codex).
+- **Install to the NVMe (dual boot) after Slice 3** (owner, 2026-09-26): the USB drive stays the
+  test bed while CUDA/Docker/Ollama land, and the NVMe step, which lifts the "never write the NVMe
+  partition table or ESP" rule, gets its own plan, Codex review and approval, with a full JetPack
+  backup first.
