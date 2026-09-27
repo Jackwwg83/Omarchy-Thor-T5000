@@ -23,11 +23,14 @@ STUB = textwrap.dedent("""\
     case $name in
       lsblk)
         case "$*" in
-          *TYPE,TRAN,SERIAL,SIZE*) echo "disk usb $SERIAL $SIZE" ;;
+          *TYPE,TRAN,SERIAL,SIZE*) if [[ ${MODE:-} == nvme ]]; then echo "disk nvme $SERIAL $SIZE"; else echo "disk usb $SERIAL $SIZE"; fi ;;
+          *PARTLABEL,FSTYPE*nvme0n1p12*) cat "$STATE/p12-layout" 2>/dev/null || echo "RAYTONE_OMARCHY ext4" ;;
           *PKNAME*) echo nvme0n1 ;;
           *PARTLABEL,FSTYPE*) printf 'sdz\\nsdz1 RAYTONE_ESP vfat\\nsdz2 RAYTONE_ROOT ext4\\n' ;;
         esac ;;
-      findmnt) echo /dev/nvme0n1p1 ;;
+      findmnt)
+        if [[ " $* " == *" -S "* ]]; then [[ -f $STATE/p12-mounted ]] && echo /mnt/somewhere; exit 0; fi
+        cat "$STATE/root-source" 2>/dev/null || echo /dev/nvme0n1p1 ;;
       gpg)
         case "$*" in
           *--list-secret-keys*) [[ -f $STATE/no-key ]] || echo "fpr:::::::::$FPR:" ;;
@@ -252,6 +255,78 @@ class PublishThorRepoTests(unittest.TestCase):
         r = self.run_script("--write", "--confirm-serial", SERIAL)
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("omarchy-4.0.4-2", r.stderr)
+
+
+class PublishToTheNvmeTests(PublishThorRepoTests):
+    """--nvme: after Slice 4 Omarchy runs from the NVMe's RAYTONE_OMARCHY (p12); JetPack, on p1 of the
+    same disk, publishes into that partition's repository."""
+    NVME_SERIAL = "9C510FAKE0001"
+
+    def setUp(self):
+        super().setUp()
+        dev = pathlib.Path(self.tmp.name) / "dev"
+        for n in ("nvme0n1", "nvme0n1p12"):
+            (dev / n).touch()
+        self.nvme = dev / "disk" / "by-id" / f"nvme-XG7000-2TB_2280_{self.NVME_SERIAL}"
+        self.nvme.symlink_to("../../nvme0n1")
+
+    def run_nvme(self, *args, link=None):
+        t = pathlib.Path(self.tmp.name)
+        env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}", STATE=str(self.state), TARGET=str(self.target),
+                   SERIAL=self.NVME_SERIAL, SIZE="2048408248320", FPR=FPR, MODE="nvme", RAYTONE_SYS=str(self.sys),
+                   RAYTONE_SKIP_ROOT_CHECK="1", RAYTONE_NO_UNSHARE="1", RAYTONE_TARGET_MOUNT=str(self.target),
+                   RAYTONE_HOST_ETC=str(t / "hostetc"), RAYTONE_UDEV_RULES=str(t / "rules"),
+                   RAYTONE_SIGNING_HOME=str(self.gnupg), PKGDIR=str(self.pkgs))
+        return subprocess.run(["bash", str(SCRIPT), "--nvme", str(link or self.nvme), "--serial", self.NVME_SERIAL,
+                               *args, *map(str, self.new)], env=env, capture_output=True, text=True)
+
+    def write_nvme(self):
+        r = self.run_nvme("--write", "--confirm-serial", self.NVME_SERIAL)
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        return r
+
+    def refused(self, why, *args, link=None):
+        r = self.run_nvme("--write", "--confirm-serial", self.NVME_SERIAL, *args, link=link)
+        self.assertNotEqual(r.returncode, 0, why)
+        self.assertFalse([c for c in self.calls() if c.startswith(("mount", "chroot"))], why)
+        return r
+
+    def test_nvme_publishes_into_the_omarchy_partition(self):
+        self.write_nvme()
+        mounts = [c for c in self.calls() if c.startswith("mount ") and "nvme0n1p12" in c]
+        self.assertTrue(mounts, self.calls())
+        self.assertEqual(self.entries(), ["omarchy-4.0.4-2", "raytone-thor-nft-modules-6.8.12.l4t39.2.1-1"])
+
+    def test_nvme_dry_run_names_the_partition_and_mounts_nothing(self):
+        r = self.run_nvme()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("nvme0n1p12", r.stdout)
+        self.assertFalse([c for c in self.calls() if c.startswith(("mount", "chroot"))])
+
+    def test_nvme_leaves_udev_alone(self):
+        # JetPack's own root is on this disk: no automount rule or change event for it
+        self.write_nvme()
+        self.assertFalse([c for c in self.calls() if c.startswith("udevadm")])
+
+    def test_nvme_refuses_a_mounted_omarchy_partition(self):
+        (self.state / "p12-mounted").touch()
+        self.refused("p12 mounted")
+
+    def test_nvme_refuses_when_running_from_the_omarchy_partition(self):
+        (self.state / "root-source").write_text("/dev/nvme0n1p12\n")
+        self.refused("running from p12")
+
+    def test_nvme_refuses_a_partition_that_is_not_raytone_omarchy(self):
+        (self.state / "p12-layout").write_text("APP ext4\n")
+        self.refused("p12 is not RAYTONE_OMARCHY")
+
+    def test_nvme_refuses_a_link_that_is_not_an_nvme_disk(self):
+        r = self.refused("usb link given to --nvme", link=self.link)
+        self.assertIn("nvme", r.stderr)
+
+    def test_nvme_refuses_another_serial(self):
+        r = self.run_nvme("--write", "--confirm-serial", "OTHER")
+        self.assertNotEqual(r.returncode, 0)
 
 
 if __name__ == "__main__":
