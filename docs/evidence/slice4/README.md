@@ -100,9 +100,15 @@ Notes:
   off); the system clock was not set from `rtc0`, and NTP fixed it about 50 s later with Wi-Fi up.
   A warm reboot kept the time. Without a network the clock would stay wrong: to fix (set the
   clock from `rtc0` at boot), after comparing with the USB boot.
-- `docker` needs `sudo` for the `nvidia` user (not in the `docker` group; Docker is socket-activated).
 - `omarchy-update` over SSH needs the desktop session's environment (`OMARCHY_PATH` and so on).
 - Kernel sync to APP (raytone-thor-omarchy 0.1.0-10, from Codex's final review): the initramfs must
   hold the four NVMe modules for the one installed raytone-thor-linux version, and both files are
   written before either is renamed. Checked against the real kernel directory and initramfs list;
   the hook itself has not run on a real kernel upgrade yet (none published): verify at the next one.
+- Publishing after the move (2026-09-27 18:3x): `publish-thor-repo.sh --nvme` (Codex GO after the
+  `resolv.conf` fix) from JetPack into p12's `/var/lib/raytone/repo`: dry run named
+  `/dev/nvme0n1p12`, then `published: raytone-thor-omarchy-0.1.0-10`, p12 unmounted after. Rebooted
+  to NVMe Omarchy: `omarchy-update -y` rc=0, `raytone-thor-omarchy 0.1.0-10`, `pacman -Qem` empty,
+  no failed units, DNS resolves. **real data**
+- `docker` without `sudo`: kept as upstream Omarchy ships it (owner, 2026-09-27): the docker group
+  is root-equivalent; opt in with Setup > Security > Sudoless Docker.
