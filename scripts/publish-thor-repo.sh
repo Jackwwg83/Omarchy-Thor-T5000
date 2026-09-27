@@ -3,6 +3,10 @@
 # the drive picks them up. Installs nothing.
 #
 #   publish-thor-repo.sh --disk /dev/disk/by-id/usb-... --serial S [--write --confirm-serial S] PKG...
+#   publish-thor-repo.sh --nvme /dev/disk/by-id/nvme-... --serial S [--write --confirm-serial S] PKG...
+#
+# --nvme: Omarchy installed on the NVMe (install-thor-nvme.sh) has its own repository on
+# RAYTONE_OMARCHY (p12); JetPack runs from p1 of the same disk and publishes into p12, unmounted.
 #
 # Runs on JetPack as root with the drive not in use (the drive's Arch is not running): the signing
 # key stays on the Thor's NVMe (~/raytone/signing). The drive must have the repository that
@@ -22,11 +26,12 @@ source "$HERE/lib/thor-chroot.sh"
 # shellcheck source=lib/thor-repo.sh
 source "$HERE/lib/thor-repo.sh"
 
-disk='' serial='' write=0 confirm='' dev=''
+disk='' serial='' write=0 confirm='' dev='' nvme=''
 PKG_FILES=()
 while (($#)); do
   case $1 in
     --disk) disk=${2:-}; shift 2 ;;
+    --nvme) nvme=${2:-}; shift 2 ;;
     --serial) serial=${2:-}; shift 2 ;;
     --write) write=1; shift ;;
     --confirm-serial) confirm=${2:-}; shift 2 ;;
@@ -34,7 +39,17 @@ while (($#)); do
     *) PKG_FILES+=("$1"); shift ;;
   esac
 done
-resolve_usb_disk
+if [[ -n $nvme ]]; then
+  [[ -z $disk && -n $serial ]] || die "usage: --nvme /dev/disk/by-id/nvme-... --serial SERIAL (not with --disk)"
+  [[ $(basename "$nvme") == nvme-* && $(basename "$(dirname "$nvme")") == by-id ]] ||
+    die "--nvme must be a /dev/disk/by-id/nvme-* link, got $nvme"
+  dev=$(readlink -f "$nvme")
+  name=$(basename "$dev")
+  [[ $name =~ ^nvme[0-9]+n[0-9]+$ ]] || die "$nvme resolves to $dev, not a whole NVMe disk node"
+  disk=$nvme
+else
+  resolve_usb_disk
+fi
 ((${#PKG_FILES[@]})) || die "name at least one package file to publish"
 for f in "${PKG_FILES[@]}"; do
   # a plain package file name: pacman's name-version-release-arch characters only
@@ -46,6 +61,26 @@ MNT=${RAYTONE_TARGET_MOUNT:-/mnt/raytone-target}
 HOST_ETC=${RAYTONE_HOST_ETC:-/etc}
 SIGNING=${RAYTONE_SIGNING_HOME:-$HOME/raytone/signing}
 ROOT_DEV=${dev}2
+if [[ -n $nvme ]]; then
+  ROOT_DEV=${dev}p12
+  # the NVMe holds JetPack's running root on p1: check the disk and that p12 is Omarchy's, idle
+  identity() {
+    local type tran ser
+    read -r type tran ser _ < <(lsblk -dn -b -o TYPE,TRAN,SERIAL,SIZE "$dev")
+    [[ $type == disk && $tran == nvme ]] || die "$dev is '$type' on '$tran', not an NVMe disk"
+    [[ $ser == "$serial" ]] || die "$dev serial is '$ser', expected '$serial'"
+  }
+  not_in_use() {
+    [[ $(basename "$(findmnt -n -o SOURCE /)") != "${name}p12" ]] || die "$ROOT_DEV holds / (publish from JetPack)"
+    [[ -z $(findmnt -rn -S "$ROOT_DEV") ]] || die "$ROOT_DEV is mounted"
+  }
+  check_layout() {
+    [[ $(lsblk -n -o PARTLABEL,FSTYPE "$ROOT_DEV") == "RAYTONE_OMARCHY ext4" ]] ||
+      die "$ROOT_DEV is not an ext4 RAYTONE_OMARCHY (install-thor-nvme.sh)"
+  }
+  suppress_automount() { :; }
+  restore_automount() { :; }
+fi
 
 # name-version-release, as repo-add names the database entry
 entry() { local e=${1##*/}; e=${e%.pkg.tar.*}; echo "${e%-*}"; }
@@ -76,7 +111,7 @@ mount -t ext4 -o noatime "$ROOT_DEV" "$MNT"
 [[ -f $MNT/.raytone-unpacked && -f $MNT$REPO/$REPO_DB ]] ||
   die "$ROOT_DEV has no [raytone-thor] repository; run install-thor-omarchy.sh first"
 repo_signing_key
-thor_chroot_mount
+thor_chroot_mount --no-resolv  # signing and repo-add are local
 # pacman accepts a signature when its key is valid in pacman's keyring: full (f) or ultimate (u),
 # which install-thor-omarchy.sh's pacman-key --lsign-key gives the repository key.
 validity=$(in_target gpg --homedir /etc/pacman.d/gnupg --batch --list-keys --with-colons "$fpr" 2>/dev/null |

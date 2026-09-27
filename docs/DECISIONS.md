@@ -299,3 +299,18 @@ unmodified. Evidence: [slice2/README.md](evidence/slice2/README.md).
   installs this package.
 - **CDI in CSV mode, regenerated at every boot into /run/cdi**, after NVIDIA's display stack; the
   toolkit's own pacman hook is desktop-only. OOMScoreAdjust for Ollama (known issue 5699079).
+
+## 2026-09-26 — Slice 4: Omarchy on the NVMe next to JetPack
+
+- **Owner lifted two rules for this slice only**: the NVMe partition table (APP shrinks, p12 added)
+  and JetPack's `extlinux.conf` (one entry added, made the default). QSPI, the ESP, UEFI variables
+  and TPM NV stay untouched. Split 950/955 GiB; Omarchy the default in the 3 s menu (owner).
+- **Boot through L4TLauncher's extlinux.conf on APP**, not the ESP: kernel and initramfs are copied to
+  APP `/boot/raytone-thor/`, and later kernels follow through a pacman hook (`nvme-boot.conf`).
+- **Initramfs on the NVMe** (Codex): NVIDIA's kernel has the PCIe controller, its PHY and NVMe as
+  modules; the drive boots without one, the NVMe cannot.
+- **The script checks before each step**: disk identity, the recorded table (original or split),
+  a verified backup, what the kernel sees after partx. The clone needs a quiet source (no user logged
+  in at the Thor, no pacman lock, AI services stopped), and the boot entry needs a finished,
+  cleanly unmounted clone that mounts p12 as `/`. Codex: GO after five rounds
+  (docs/evidence/slice4/README.md).
