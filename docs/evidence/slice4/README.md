@@ -1,5 +1,7 @@
 # Slice 4: Omarchy on the Thor's NVMe, dual boot with JetPack
 
+**Result (2026-09-27): Omarchy boots from the NVMe by default, JetPack from the L4TLauncher menu (key `1`); the USB drive is no longer needed.**
+
 Plan: APP (JetPack, p1) shrinks from 1905 GiB to 950 GiB, keeping its start, PARTUUID, type, name and
 attributes; the rest becomes `RAYTONE_OMARCHY` (p12, about 955 GiB), a copy of the USB drive's root.
 L4TLauncher's `extlinux.conf` on APP gets an `omarchy` entry, first and default, and JetPack's
@@ -79,4 +81,19 @@ Notes:
 | 5.3 `create-root` | **real data** | `mkfs.ext4 -q -L RAYTONE_OMARCHY /dev/nvme0n1p12` |
 | 5.4 `clone` | **real data** | two rsync passes; `cloned: / into /dev/nvme0n1p12 (PARTUUID ea62e758-336c-4814-a409-41cbbdcfc857), fstab moved` |
 | 5.5 `boot-entry` | **real data** | clone checks passed; APP `extlinux.conf`: `DEFAULT omarchy`, `LABEL omarchy` (`LINUX /boot/raytone-thor/Image`, `INITRD /boot/raytone-thor/initrd`, `root=PARTUUID=ea62e758… ro rootwait=20 … panic=10 systemd.gpt_auto=0`) before JetPack's unchanged `LABEL primary`; `Image` 53M, `initrd` 16M |
-| 6. reboots, 7. checks on NVMe Omarchy | pending | owner at the Thor |
+| 6.1 reboot, drive in | **real data** | GRUB, Omarchy from the drive: `/` `/dev/sda2`, `root=PARTUUID=ca5a56c6…`, no failed units, nothing on the NVMe mounted |
+| 6.2 power off, drive out, power on | **real data** | L4TLauncher menu, default `omarchy`: `/` `/dev/nvme0n1p12` (rw,noatime), `root=PARTUUID=ea62e758…`, no USB disk; `nvme`, `pcie_tegra264`, `phy_tegra194_p2u` loaded from the initramfs; 17.9 s to userspace done, no failed units; Ollama, NetworkManager, SDDM active |
+| 6.3 menu `1` (JetPack) | **real data** | L4TLauncher selects by number key (any other key boots the default). `/` `/dev/nvme0n1p1`, `root=PARTUUID=1b3479b0…`; 935G filesystem, 53G used; R39.2.1, 6.8.12-1021-tegra; `systemctl is-system-running`: running, no failed units; `nvidia-smi`: NVIDIA Thor; ext4 clean, 249036800 blocks; 10 apt holds in place |
+| 6.4 reboot, no key | **real data** | back to Omarchy on `nvme0n1p12`, 17.2 s, no failed units, clock right from the start |
+| 7. on NVMe Omarchy | **real data** | `cuda-smoke` PASS (0 wrong, SGEMM 6.77e-05); Ollama qwen3:1.7b `100% GPU`, 17×23 → 391; `sudo docker run --device nvidia.com/gpu=all nvcr.io/nvidia/cuda:13.2.0-runtime-ubuntu24.04` smoke PASS; APP `/boot/raytone-thor/Image` and `initrd` byte-identical to `/boot`; headphone jack on the Thor heard by the owner (`pw-play --target alsa_output.platform-sound.analog-stereo`, APE PCM RUNNING); Wi-Fi connected; the owner logged in to the desktop; `/` 939G, 858G free |
+
+## Known issues
+
+- **Clock after a cold boot**: the first boot after power-off started at 1970-01-01. The Thor has two
+  RTCs: `rtc0` (`nvvrs-pseq-rtc`, the PMIC, correct time) and `rtc1` (`tegra_rtc`, reset at power
+  off); the system clock was not set from `rtc0`, and NTP fixed it about 50 s later with Wi-Fi up.
+  A warm reboot kept the time. Without a network the clock would stay wrong: to fix (set the
+  clock from `rtc0` at boot), after comparing with the USB boot.
+- `docker` needs `sudo` for the `nvidia` user (not in the `docker` group; Docker is socket-activated).
+- `omarchy-update` over SSH needs the desktop session's environment (`OMARCHY_PATH` and so on).
+- Kernel sync to APP is checked by content only; the pacman hook runs at the next kernel upgrade.
