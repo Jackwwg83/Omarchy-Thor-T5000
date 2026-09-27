@@ -1,8 +1,10 @@
 # RaytoneOS Jetson AGX Thor: Ollama on the GPU through its CUDA 13 backend (raytone-thor-ollama).
 [Unit]
 Description=Ollama Service (NVIDIA Thor, CUDA 13)
-Wants=network-online.target
-After=network-online.target
+# nv-load-display-modules (raytone-thor-core) loads the NVIDIA kernel module; Ollama looks for GPUs
+# once, at start, and before the module it finds none and stays on the CPU
+Wants=network-online.target nv-load-display-modules.service
+After=network-online.target nv-load-display-modules.service
 
 [Service]
 ExecStart=/usr/bin/ollama serve
