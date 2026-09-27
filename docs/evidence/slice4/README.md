@@ -28,17 +28,23 @@ initramfs images to APP.
 Notes:
 - `mkinitcpio` reports `module not found: crypto_lz4` from the systemd hook (NVIDIA's kernel has no
   `CONFIG_CRYPTO_LZ4`); it was already there before the drop-in, and the image is built.
-- JetPack's apt: only `nvidia-l4t-bootloader`'s postinst rewrites `extlinux.conf`, and it is held,
-  like the kernel packages, since Gate 0b. The holds stay until the project ends.
+- JetPack's apt, audited on APP (read-only mount, 2026-09-27): two paths write `extlinux.conf`.
+  `nvidia-l4t-bootloader`'s postinst, held; and `/etc/kernel/postinst.d/xx-nvidia-update-extlinux`
+  (package `nvidia-l4t-extlinux`, not held), run by `nvidia-l4t-kernel`'s postinst (held) or any
+  kernel package install. It calls `nv-update-extlinux generic -r net.ifnames=0`: `DEFAULT` back to
+  `primary`, the other entries kept, a copy in `extlinux.conf.nv-update-extlinux-backup`. So a kernel
+  install on JetPack makes JetPack the default again (Omarchy stays as menu `0`); the fix is
+  `DEFAULT omarchy` by hand. The holds (10 packages, all `nvidia-l4t-kernel*` and the bootloader)
+  stay until the project ends.
 
 ## Attended run (owner at the Thor, about 1 hour)
 
-`D=/dev/disk/by-id/nvme-XG7000-2TB_2280_9C51015000022`, `S=9C51015000022`,
+`D=/dev/disk/by-id/nvme-XG7000-2TB_2280_<NVMe serial>`, `S=<NVMe serial>`,
 `B=/var/lib/raytone/nvme-backup` (on the USB drive; APP's 53 GB tar fits in its 173 GB free).
 
 1. **Boot JetPack**: pick "JetPack on the internal NVMe" in GRUB.
 2. **Publish 0.1.0-9** from JetPack: copy the package to `~/raytone/pkgs`, then
-   `sudo RAYTONE_SIGNING_HOME=/home/nvidia/raytone/signing scripts/publish-thor-repo.sh --disk <JZAO by-id> --serial 2797824271339930 --write --confirm-serial 2797824271339930 ~/raytone/pkgs/raytone-thor-omarchy-0.1.0-9-any.pkg.tar.xz`.
+   `sudo RAYTONE_SIGNING_HOME=/home/nvidia/raytone/signing scripts/publish-thor-repo.sh --disk <JZAO by-id> --serial <drive serial> --write --confirm-serial <drive serial> ~/raytone/pkgs/raytone-thor-omarchy-0.1.0-9-any.pkg.tar.xz`.
 3. **Reboot to Omarchy on the drive**: `omarchy-update -y`, then `sudo mkinitcpio -P` (a drop-in
    change does not trigger the kernel hook); `lsinitcpio /boot/initramfs-raytone-thor-linux.img`
    lists the four modules.
@@ -96,4 +102,7 @@ Notes:
   clock from `rtc0` at boot), after comparing with the USB boot.
 - `docker` needs `sudo` for the `nvidia` user (not in the `docker` group; Docker is socket-activated).
 - `omarchy-update` over SSH needs the desktop session's environment (`OMARCHY_PATH` and so on).
-- Kernel sync to APP is checked by content only; the pacman hook runs at the next kernel upgrade.
+- Kernel sync to APP (raytone-thor-omarchy 0.1.0-10, from Codex's final review): the initramfs must
+  hold the four NVMe modules for the one installed raytone-thor-linux version, and both files are
+  written before either is renamed. Checked against the real kernel directory and initramfs list;
+  the hook itself has not run on a real kernel upgrade yet (none published): verify at the next one.
