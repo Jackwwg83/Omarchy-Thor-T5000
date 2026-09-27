@@ -82,3 +82,73 @@ class ContainerGpuTests(unittest.TestCase):
         self.assertIn("After=local-fs.target nv-load-display-modules.service", unit.splitlines())
         text = (PKG / "PKGBUILD").read_text()
         self.assertIn("usr/lib/systemd/system/multi-user.target.wants/raytone-thor-cdi.service", text)
+
+
+class FanTests(unittest.TestCase):
+    """Seen on the Thor (2026-09-28): a 768p video held the SoC at 85-89 C with the fan at about
+    2800 of 5371 rpm (JetPack's "cool" profile), then peaked at 96 C and the thermal guard (95 C)
+    rebooted it. Our own fan configuration reaches full speed earlier. nvfancontrol drives the fan
+    from the 25/25/25/25 average of four zones as a margin to 115 C, while the guard reads the
+    hottest zone, so full speed comes at an average of 83 C."""
+
+    CONF = PKG / "nvfancontrol-raytone-thor.conf"
+
+    def profile(self, name):
+        text = self.CONF.read_text()
+        m = re.search(r"FAN_PROFILE %s \{(.*?)\}" % name, text, re.S)
+        self.assertIsNotNone(m, name)
+        return [tuple(int(x) for x in l.split()) for l in m.group(1).splitlines() if l.strip() and not l.strip().startswith("#")]
+
+    def test_the_raytone_profile_is_the_default(self):
+        self.assertRegex(self.CONF.read_text(), r"(?m)^\s*FAN_DEFAULT_PROFILE raytone$")
+        self.assertRegex(self.CONF.read_text(), r"(?m)^\s*TMARGIN ENABLED$")
+
+    def test_full_speed_from_an_average_of_83_c(self):
+        rows = self.profile("raytone")
+        margins = [r[0] for r in rows]
+        self.assertEqual(margins, sorted(margins))
+        self.assertEqual(rows[0][0], 0)
+        self.assertEqual(rows[-1][0], 115)
+        for margin, hyst, pwm, rpm in rows:
+            self.assertTrue(0 <= pwm <= 255 and hyst == 0)
+            if margin <= 32:
+                self.assertEqual((pwm, rpm), (255, 5371), margin)
+        # never slower than JetPack's "cool" curve (margin, pwm) at any of its points
+        for margin, pwm in ((0, 255), (15, 255), (24, 192), (29, 140), (35, 102), (45, 77), (115, 77)):
+            mine = max((r for r in rows if r[0] <= margin), key=lambda r: r[0])[2]
+            self.assertGreaterEqual(mine, pwm, margin)
+
+    def test_the_package_points_nvfancontrol_at_it(self):
+        pkgbuild = (PKG / "PKGBUILD").read_text()
+        self.assertIn("nvfancontrol-raytone-thor.conf", pkgbuild)
+        install = (PKG / "raytone-thor-omarchy.install").read_text()
+        self.assertIn("/etc/nvpower/nvfancontrol/nvfancontrol_p3834_0008_p4071_0000.conf", install)
+        self.assertIn("/var/lib/nvfancontrol/status", install)
+
+    def test_relinks_only_jetpacks_own_link(self):
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as t:
+            t = pathlib.Path(t)
+            etc = t / "etc"
+            (etc / "nvpower/nvfancontrol").mkdir(parents=True)
+            vendor, ours = etc / "nvpower/nvfancontrol/nvfancontrol_p3834_0008_p4071_0000.conf", etc / "nvpower/nvfancontrol/raytone-thor.conf"
+            vendor.write_text("v")
+            ours.write_text("o")
+            link = etc / "nvfancontrol.conf"
+            script = f"""source {PKG}/raytone-thor-omarchy.install
+_fan_link {vendor} {ours} {link} /bin/true /nonexistent"""
+            for start, expected in ((vendor, ours), (etc / "mine.conf", etc / "mine.conf")):
+                link.unlink(missing_ok=True)
+                os.symlink(start, link)
+                subprocess.run(["bash", "-c", script], check=True)
+                self.assertEqual(pathlib.Path(os.readlink(link)), expected)
+
+
+class UsernsTests(unittest.TestCase):
+    def test_unprivileged_user_namespaces_are_allowed(self):
+        # The L4T kernel restricts them through AppArmor (an Ubuntu default) and Arch ships no
+        # AppArmor profiles, so every one was refused: Codex's bwrap sandbox could not start.
+        conf = (PKG / "sysctl-60-raytone-thor-userns.conf").read_text()
+        self.assertIn("kernel.apparmor_restrict_unprivileged_userns = 0", conf.splitlines())
+        self.assertIn("usr/lib/sysctl.d/60-raytone-thor-userns.conf", (PKG / "PKGBUILD").read_text())

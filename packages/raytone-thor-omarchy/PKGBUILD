@@ -3,13 +3,13 @@
 # overrides (see raytone-omarchy-apply-system and overrides/UPSTREAM.sha256).
 pkgname=raytone-thor-omarchy
 pkgver=0.1.0
-pkgrel=10
+pkgrel=11
 pkgdesc='Jetson AGX Thor layer for Omarchy: display device, pacman repositories, install overrides'
 arch=(any)
 url='https://github.com/raytone-lab/Omarchy-Thor-T5000'
 license=(MIT)
 depends=(omarchy raytone-thor-graphics raytone-thor-nft-modules nvidia-container-toolkit hyprland sddm uwsm)
-backup=(etc/sddm.conf.d/20-raytone-thor.conf)
+backup=(etc/sddm.conf.d/20-raytone-thor.conf etc/nvpower/nvfancontrol/raytone-thor.conf)
 install=raytone-thor-omarchy.install
 # makepkg only takes local sources from this directory's top level, so the files are listed here and
 # copied from $startdir (this directory) by package().
@@ -30,7 +30,9 @@ _files=(raytone-omarchy-apply-system
         pacman/pacman.conf
         pacman/mirrorlist
         uwsm-env.d-20-raytone-thor
-        sddm-20-raytone-thor.conf)
+        sddm-20-raytone-thor.conf
+        nvfancontrol-raytone-thor.conf
+        sysctl-60-raytone-thor-userns.conf)
 
 package() {
   local s=$startdir o=$pkgdir/usr/share/raytone-thor/omarchy-overrides f
@@ -55,4 +57,6 @@ package() {
   install -Dm644 "$s/pacman/mirrorlist" "$pkgdir/usr/share/raytone-thor/pacman/mirrorlist"
   install -Dm644 "$s/uwsm-env.d-20-raytone-thor" "$pkgdir/usr/share/uwsm/env.d/20-raytone-thor"
   install -Dm644 "$s/sddm-20-raytone-thor.conf" "$pkgdir/etc/sddm.conf.d/20-raytone-thor.conf"
+  install -Dm644 "$s/nvfancontrol-raytone-thor.conf" "$pkgdir/etc/nvpower/nvfancontrol/raytone-thor.conf"
+  install -Dm644 "$s/sysctl-60-raytone-thor-userns.conf" "$pkgdir/usr/lib/sysctl.d/60-raytone-thor-userns.conf"
 }

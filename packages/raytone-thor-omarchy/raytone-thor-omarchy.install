@@ -1,5 +1,19 @@
+# The fan: point nvfancontrol at our configuration, only where it still uses JetPack's own (a link
+# someone set elsewhere stays), and restart it the way its configuration changes take effect: stop,
+# drop its saved state, start.   _fan_link VENDOR OURS LINK SYSTEMCTL STATUS
+_fan_link() {
+  [[ -L $3 && $(readlink "$3") == "$1" && -f $2 ]] || return 0
+  ln -sfn "$2" "$3"
+  "$4" stop nvfancontrol 2> /dev/null
+  rm -f "$5"
+  "$4" start nvfancontrol 2> /dev/null || true
+}
+
 # Existing Omarchy users get the Thor layer's per-user parts (pacman hook, hidden menu entries).
 post_install() {
+  _fan_link /etc/nvpower/nvfancontrol/nvfancontrol_p3834_0008_p4071_0000.conf /etc/nvpower/nvfancontrol/raytone-thor.conf \
+    /etc/nvfancontrol.conf systemctl /var/lib/nvfancontrol/status
+  sysctl -q -p /usr/lib/sysctl.d/60-raytone-thor-userns.conf 2> /dev/null || true
   raytone-thor-user-setup
 }
 
