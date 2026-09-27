@@ -111,7 +111,7 @@ mount -t ext4 -o noatime "$ROOT_DEV" "$MNT"
 [[ -f $MNT/.raytone-unpacked && -f $MNT$REPO/$REPO_DB ]] ||
   die "$ROOT_DEV has no [raytone-thor] repository; run install-thor-omarchy.sh first"
 repo_signing_key
-thor_chroot_mount
+thor_chroot_mount --no-resolv  # signing and repo-add are local
 # pacman accepts a signature when its key is valid in pacman's keyring: full (f) or ultimate (u),
 # which install-thor-omarchy.sh's pacman-key --lsign-key gives the repository key.
 validity=$(in_target gpg --homedir /etc/pacman.d/gnupg --batch --list-keys --with-colons "$fpr" 2>/dev/null |

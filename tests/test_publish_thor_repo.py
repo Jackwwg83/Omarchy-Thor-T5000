@@ -175,6 +175,15 @@ class PublishThorRepoTests(unittest.TestCase):
         self.assertFalse([c for c in self.chroot() if c.startswith("pacman ")
                           or (c.startswith("pacman-key") and c.split()[1] not in ("--list-keys", "--verify"))])
 
+    def test_leaves_the_targets_resolv_conf_alone(self):
+        # From Codex (Slice 4, --nvme review): publishing needs no network; the chroot helper replaced
+        # the target's resolv.conf with the host's and left it there
+        t = pathlib.Path(self.tmp.name)
+        (t / "hostetc" / "resolv.conf").write_text("nameserver 10.0.0.1\n")
+        (self.target / "etc" / "resolv.conf").write_text("# target's own\n")
+        self.write()
+        self.assertEqual((self.target / "etc" / "resolv.conf").read_text(), "# target's own\n")
+
     def test_a_stale_signature_is_replaced(self):
         # a rebuilt package keeps its file name; the old .sig next to it does not match
         stale = self.new[0].with_name(self.new[0].name + ".sig")

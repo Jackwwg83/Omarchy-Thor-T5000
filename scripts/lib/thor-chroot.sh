@@ -25,8 +25,9 @@ target_no_links() {
   done
 }
 
-thor_chroot_mount() {
-  local n
+thor_chroot_mount() { # --no-resolv: keep the target's resolv.conf (no network needed inside)
+  local n resolv=1
+  [[ ${1:-} == --no-resolv ]] && resolv=0
   target_no_links proc sys dev run tmp etc/resolv.conf
   mkdir -p "$MNT"/{proc,sys,dev,run,tmp}
   mount -t proc proc "$MNT/proc"
@@ -47,6 +48,7 @@ thor_chroot_mount() {
   ln -sf /proc/self/fd/2 "$MNT/dev/stderr"
   mount -t tmpfs -o mode=0755 tmpfs "$MNT/run"
   mount -t tmpfs -o mode=1777 tmpfs "$MNT/tmp"
+  ((resolv)) || return 0
   rm -f "$MNT/etc/resolv.conf"
   cat "$HOST_ETC/resolv.conf" > "$MNT/etc/resolv.conf" 2>/dev/null || true
 }
