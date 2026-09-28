@@ -48,7 +48,7 @@ class MenuExtensionTests(unittest.TestCase):
                     "setup.direct-boot", "update.firmware", "style.unlock", "update.config.plymouth"):
             with self.subTest(id=id_):
                 self.assertEqual(menu[id_], {"when": "false"})
-        self.assertEqual(len(menu), 24)
+        self.assertEqual(len(menu), 25)
 
     def test_ollama_installs_the_thor_build(self):
         # upstream's entry picks ollama-cuda/ollama, which do not exist for aarch64; the Thor's
@@ -56,6 +56,13 @@ class MenuExtensionTests(unittest.TestCase):
         self.file.write_text(SKEL)
         menu = self.run_cmd()
         self.assertEqual(menu["install.ai.ollama"], {"action": "omarchy-install-app Ollama raytone-thor-ollama"})
+
+    def test_raytone_models_is_on_the_root_menu(self):
+        self.file.write_text(SKEL)
+        menu = self.run_cmd()
+        self.assertEqual(menu["raytone-models"]["action"], "raytone-models-app")
+        self.assertEqual(menu["raytone-models"]["label"], "Raytone Models")
+        self.assertIn("raytone-models-app", menu["raytone-models"]["when"])    # hidden where it is not installed
 
     def test_keeps_the_users_own_entries_and_lets_them_win(self):
         self.file.write_text('{\n  "personal": {"label":"Personal"},\n  "system.suspend": {"when":"true"}\n}\n')
@@ -84,7 +91,7 @@ class MenuExtensionTests(unittest.TestCase):
         self.assertEqual(self.file.read_text(), broken)
 
     def test_creates_the_file_when_missing(self):
-        self.assertEqual(len(self.run_cmd()), 24)
+        self.assertEqual(len(self.run_cmd()), 25)
 
     def test_only_whole_line_comments(self):
         # Omarchy's JSONC reader strips // comments only when they fill the line
@@ -93,6 +100,94 @@ class MenuExtensionTests(unittest.TestCase):
         for line in self.file.read_text().splitlines():
             if "//" in line:
                 self.assertTrue(line.lstrip().startswith("//"), line)
+
+
+
+class ShortcutTests(unittest.TestCase):
+    """SUPER + M opens Raytone Models: a marked block at the end of the user's
+    ~/.config/hypr/bindings.lua, left out when the user bound SUPER + M themselves."""
+
+    BLOCK = '-- BEGIN raytone-thor: Raytone Models (raytone-thor-menu-extension)'
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.home = pathlib.Path(self.tmp.name)
+        (self.home / ".config/omarchy/extensions").mkdir(parents=True)
+        self.bindings = self.home / ".config/hypr/bindings.lua"
+        self.bindings.parent.mkdir(parents=True)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_cmd(self):
+        r = subprocess.run(["bash", str(CMD)], env=dict(os.environ, HOME=str(self.home)), capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return self.bindings.read_text()
+
+    def test_super_m_opens_raytone_models_once(self):
+        mine = '-- my bindings\no.bind("SUPER + SHIFT + R", "SSH", "alacritty -e ssh x")\n'
+        self.bindings.write_text(mine)
+        out = self.run_cmd()
+        self.assertTrue(out.startswith(mine))
+        self.assertIn('o.bind("SUPER + M", "Raytone Models", "raytone-models-app")', out)
+        self.assertEqual(self.run_cmd().count(self.BLOCK), 1)
+
+    def test_a_users_own_super_m_wins(self):
+        mine = 'o.bind("SUPER + M", "Mail", "thunderbird")\n'
+        self.bindings.write_text(mine)
+        self.assertEqual(self.run_cmd(), mine)
+
+    def test_no_bindings_file_is_left_alone(self):
+        # not an Omarchy 4 Lua configuration: nothing to add to
+        self.bindings.unlink(missing_ok=True)
+        subprocess.run(["bash", str(CMD)], env=dict(os.environ, HOME=str(self.home)), check=True, capture_output=True)
+        self.assertFalse(self.bindings.exists())
+
+    def test_ours_goes_when_the_user_binds_super_m_later(self):
+        self.bindings.write_text("-- mine\n")
+        self.run_cmd()
+        self.bindings.write_text(self.bindings.read_text() + 'o.bind("SUPER + M", "Mail", "thunderbird")\n')
+        out = self.run_cmd()
+        self.assertNotIn(self.BLOCK, out)
+        self.assertIn('"Mail"', out)
+
+    def test_a_single_quoted_user_binding_wins_and_a_comment_does_not(self):
+        # From Codex's review: Lua takes either quote; a commented-out line binds nothing
+        self.bindings.write_text("o.bind('SUPER + M', 'Mail', 'thunderbird')\n")
+        self.assertNotIn(self.BLOCK, self.run_cmd())
+        self.bindings.write_text('-- o.bind("SUPER + M", "Mail", "thunderbird")\n')
+        self.assertIn(self.BLOCK, self.run_cmd())
+
+    def test_a_user_binding_over_several_lines_wins(self):
+        self.bindings.write_text('o.bind(\n  "SUPER + M", "Mail", "thunderbird"\n)\n')
+        self.assertNotIn(self.BLOCK, self.run_cmd())
+
+    def test_the_files_mode_stays(self):
+        self.bindings.write_text("-- mine\n")
+        self.bindings.chmod(0o600)
+        self.run_cmd()
+        self.assertEqual(self.bindings.stat().st_mode & 0o777, 0o600)
+
+    def test_a_broken_marker_leaves_the_file_alone(self):
+        # From Codex's review: BEGIN without END must not cut the rest of the file
+        text = f'o.bind("SUPER + M", "Mail", "x")\n{self.BLOCK}\no.bind("SUPER + K", "Keep", "y")\n'
+        self.bindings.write_text(text)
+        self.assertEqual(self.run_cmd(), text)
+
+    def test_removal_gives_back_the_file_as_it_was(self):
+        original = "-- mine\n\n\n"
+        self.bindings.write_text(original)
+        self.run_cmd()
+        self.bindings.write_text('o.bind("SUPER + M", "Mail", "x")\n' + self.bindings.read_text())
+        self.assertEqual(self.run_cmd(), 'o.bind("SUPER + M", "Mail", "x")\n' + original)
+
+    def test_a_linked_bindings_file_stays_a_link(self):
+        real = self.home / "dotfiles-bindings.lua"
+        real.write_text("-- mine\n")
+        self.bindings.symlink_to(real)
+        self.run_cmd()
+        self.assertTrue(self.bindings.is_symlink())
+        self.assertIn(self.BLOCK, real.read_text())
 
 
 if __name__ == "__main__":

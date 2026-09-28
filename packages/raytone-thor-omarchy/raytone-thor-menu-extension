@@ -26,6 +26,8 @@ grep -q '^[[:space:]]*{[[:space:]]*$' "$file" || { echo "raytone-thor-menu-exten
 # Entries that work on the Thor with its own package instead of upstream's.
 overrides=(
   '"install.ai.ollama": {"action":"omarchy-install-app Ollama raytone-thor-ollama"},'
+  # the local model manager (raytone-models), where it is installed; SUPER + M below
+  '"raytone-models": {"icon":"󰧑","label":"Raytone Models","description":"Local models, recipes, agents and video (SUPER + M)","when":"command -v raytone-models-app","action":"raytone-models-app"},'
 )
 block=$(printf '%s\n' "$begin"; printf '  "%s": {"when":"false"},\n' "${ids[@]}"; printf '  %s\n' "${overrides[@]}"
         printf '%s' "$end")
@@ -45,3 +47,49 @@ BLOCK=$block BEGIN_LINE=$begin END_LINE=$end awk '
 cat "$tmp" > "$file"
 rm -f "$tmp"
 echo "Jetson AGX Thor: ${#ids[@]} menu entries hidden, ${#overrides[@]} pointed at Thor packages, in $file"
+
+# SUPER + M opens Raytone Models: a marked block at the end of the user's Lua bindings, unless the
+# user binds SUPER + M themselves (then theirs stays and ours goes). A marker without its partner
+# leaves the file alone; the file is replaced whole (a link is followed), never cut in place.
+# Hyprland reloads the file when it changes.
+bindings=${2:-$HOME/.config/hypr/bindings.lua}
+[[ -f $bindings ]] && python3 - "$bindings" <<'PY'
+import os, re, sys, tempfile
+path = sys.argv[1]
+begin = "-- BEGIN raytone-thor: Raytone Models (raytone-thor-menu-extension)"
+end = "-- END raytone-thor"
+real = os.path.realpath(path)
+text = open(real, encoding="utf-8").read()
+lines = text.splitlines(keepends=True)
+b = [i for i, l in enumerate(lines) if l.rstrip("\r\n") == begin]
+e = [i for i, l in enumerate(lines) if l.rstrip("\r\n") == end]
+if len(b) > 1 or len(e) != len(b) or (b and e[0] < b[0]):
+    print(f"raytone-thor-menu-extension: {path} has a Raytone Models marker without its partner; not changed",
+          file=sys.stderr)
+    sys.exit(0)
+if b:
+    start = b[0] - 1 if b[0] > 0 and lines[b[0] - 1] == "\n" else b[0]   # the blank line we put before it
+    others = lines[:start] + lines[e[0] + 1:]
+else:
+    others = lines
+bound = re.compile(r"""\bbind\s*\(\s*(["'])SUPER\s*\+\s*M\1""")
+# whole-line comments out, then the call may span lines (\s matches newlines)
+users = bool(bound.search("".join(l for l in others if not l.lstrip().startswith("--"))))
+if users:
+    new = "".join(others)
+elif b:
+    new = text
+else:
+    new = text + ("" if text.endswith("\n") or not text else "\n") + \
+          f'\n{begin}\no.bind("SUPER + M", "Raytone Models", "raytone-models-app")\n{end}\n'
+if new != text:
+    mode = os.stat(real).st_mode & 0o7777
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(real), prefix=".raytone-")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(new)
+    os.chmod(tmp, mode)
+    os.replace(tmp, real)
+    if not users:
+        print(f"Raytone Models on SUPER + M in {path}")
+PY
+exit 0
