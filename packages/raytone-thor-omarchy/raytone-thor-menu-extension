@@ -26,6 +26,8 @@ grep -q '^[[:space:]]*{[[:space:]]*$' "$file" || { echo "raytone-thor-menu-exten
 # Entries that work on the Thor with its own package instead of upstream's.
 overrides=(
   '"install.ai.ollama": {"action":"omarchy-install-app Ollama raytone-thor-ollama"},'
+  # the local model manager (raytone-models), where it is installed; SUPER + M below
+  '"raytone-models": {"icon":"󰧑","label":"Raytone Models","description":"Local models, recipes, agents and video (SUPER + M)","when":"command -v raytone-models-app","action":"raytone-models-app"},'
 )
 block=$(printf '%s\n' "$begin"; printf '  "%s": {"when":"false"},\n' "${ids[@]}"; printf '  %s\n' "${overrides[@]}"
         printf '%s' "$end")
@@ -45,3 +47,18 @@ BLOCK=$block BEGIN_LINE=$begin END_LINE=$end awk '
 cat "$tmp" > "$file"
 rm -f "$tmp"
 echo "Jetson AGX Thor: ${#ids[@]} menu entries hidden, ${#overrides[@]} pointed at Thor packages, in $file"
+
+# SUPER + M opens Raytone Models: a marked block at the end of the user's Lua bindings, unless the
+# user bound SUPER + M themselves (then theirs stays). Hyprland reloads the file when it changes.
+bindings=${2:-$HOME/.config/hypr/bindings.lua}
+kbegin='-- BEGIN raytone-thor: Raytone Models (raytone-thor-menu-extension)'
+kend='-- END raytone-thor'
+if [[ -f $bindings ]]; then
+  others=$(awk -v b="$kbegin" -v e="$kend" '$0 == b { skip = 1; next } skip && $0 == e { skip = 0; next } !skip' "$bindings")
+  if grep -q '"SUPER + M"' <<< "$others"; then
+    [[ $others == "$(cat "$bindings")" ]] || printf '%s\n' "$others" > "$bindings"
+  elif ! grep -qxF -- "$kbegin" "$bindings"; then
+    printf '\n%s\no.bind("SUPER + M", "Raytone Models", "raytone-models-app")\n%s\n' "$kbegin" "$kend" >> "$bindings"
+    echo "Raytone Models on SUPER + M in $bindings"
+  fi
+fi
