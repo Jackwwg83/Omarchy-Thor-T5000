@@ -125,25 +125,47 @@ class FanTests(unittest.TestCase):
         self.assertIn("/etc/nvpower/nvfancontrol/nvfancontrol_p3834_0008_p4071_0000.conf", install)
         self.assertIn("/var/lib/nvfancontrol/status", install)
 
-    def test_relinks_only_jetpacks_own_link(self):
+    def lifecycle(self, start, status, fn):
+        """Run FN (_fan_install or _fan_remove) on a fake /etc with /etc/nvfancontrol.conf -> START."""
         import os
         import tempfile
-        with tempfile.TemporaryDirectory() as t:
-            t = pathlib.Path(t)
-            etc = t / "etc"
-            (etc / "nvpower/nvfancontrol").mkdir(parents=True)
-            vendor, ours = etc / "nvpower/nvfancontrol/nvfancontrol_p3834_0008_p4071_0000.conf", etc / "nvpower/nvfancontrol/raytone-thor.conf"
-            vendor.write_text("v")
-            ours.write_text("o")
-            link = etc / "nvfancontrol.conf"
-            script = f"""source {PKG}/raytone-thor-omarchy.install
-_fan_link {vendor} {ours} {link} /bin/true /nonexistent"""
-            for start, expected in ((vendor, ours), (etc / "mine.conf", etc / "mine.conf")):
-                link.unlink(missing_ok=True)
-                os.symlink(start, link)
-                subprocess.run(["bash", "-c", script], check=True)
-                self.assertEqual(pathlib.Path(os.readlink(link)), expected)
+        t = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(__import__("shutil").rmtree, t)
+        d = t / "etc/nvpower/nvfancontrol"
+        d.mkdir(parents=True)
+        vendor, ours = d / "nvfancontrol_p3834_0008_p4071_0000.conf", d / "raytone-thor.conf"
+        vendor.write_text("v")
+        ours.write_text("o")
+        link, st = t / "etc/nvfancontrol.conf", t / "status"
+        os.symlink({"vendor": vendor, "ours": ours, "mine": t / "mine.conf"}[start], link)
+        if status:
+            st.write_text(f"FAN1:FAN_PROFILE:{status}\n")
+        r = subprocess.run(["bash", "-c", f"source {PKG}/raytone-thor-omarchy.install; {fn} {vendor} {ours} {link} {st}"],
+                           capture_output=True, text=True, check=True)
+        return pathlib.Path(os.readlink(link)).name, st.exists(), r.stdout + r.stderr
 
+    def test_install_points_jetpacks_link_at_ours_without_touching_the_daemon(self):
+        # From Codex's review: stopping nvfancontrol, even for a moment, can meet the thermal
+        # guard's check and reboot the board; nvfancontrol writes its saved state only when it
+        # starts without one, so dropping it now makes the next start take the new default
+        self.assertEqual(self.lifecycle("vendor", "cool", "_fan_install")[:2], ("raytone-thor.conf", False))
+        self.assertNotIn("systemctl", (PKG / "raytone-thor-omarchy.install").read_text().split("post_install")[0])
+
+    def test_an_upgrade_resets_a_state_saved_with_another_profile(self):
+        self.assertEqual(self.lifecycle("ours", "cool", "_fan_install")[:2], ("raytone-thor.conf", False))
+        self.assertEqual(self.lifecycle("ours", "raytone", "_fan_install")[:2], ("raytone-thor.conf", True))
+
+    def test_a_link_set_elsewhere_stays(self):
+        self.assertEqual(self.lifecycle("mine", "cool", "_fan_install")[:2], ("mine.conf", True))
+
+    def test_removal_points_the_link_back_at_jetpacks(self):
+        # From Codex's review: a link left at the removed file would stop nvfancontrol at the next
+        # boot, and the guard would reboot
+        self.assertEqual(self.lifecycle("ours", "raytone", "_fan_remove")[:2],
+                         ("nvfancontrol_p3834_0008_p4071_0000.conf", False))
+        self.assertEqual(self.lifecycle("mine", "raytone", "_fan_remove")[:2], ("mine.conf", True))
+        install = (PKG / "raytone-thor-omarchy.install").read_text()
+        self.assertIn("pre_remove()", install)
 
 class UsernsTests(unittest.TestCase):
     def test_unprivileged_user_namespaces_are_allowed(self):

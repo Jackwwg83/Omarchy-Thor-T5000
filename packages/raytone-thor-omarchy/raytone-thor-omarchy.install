@@ -1,22 +1,37 @@
-# The fan: point nvfancontrol at our configuration, only where it still uses JetPack's own (a link
-# someone set elsewhere stays), and restart it the way its configuration changes take effect: stop,
-# drop its saved state, start.   _fan_link VENDOR OURS LINK SYSTEMCTL STATUS
-_fan_link() {
-  [[ -L $3 && $(readlink "$3") == "$1" && -f $2 ]] || return 0
-  ln -sfn "$2" "$3"
-  "$4" stop nvfancontrol 2> /dev/null
-  rm -f "$5"
-  "$4" start nvfancontrol 2> /dev/null || true
+# The fan. nvfancontrol is never stopped here: the thermal guard reboots the board when it finds
+# nvfancontrol not running, even for a moment. It saves its state only when it starts without one,
+# so dropping a state saved with another profile makes its next start (the next boot) take this
+# configuration's default.   _fan_install|_fan_remove VENDOR OURS LINK STATUS
+_fan_install() {
+  if [[ -L $3 && $(readlink "$3") == "$1" && -f $2 ]]; then
+    ln -sfn "$2" "$3" || { echo "raytone-thor-omarchy: could not point $3 at $2" >&2; return 0; }
+  fi
+  if [[ -L $3 && $(readlink "$3") == "$2" && -f $4 ]] && ! grep -qx 'FAN1:FAN_PROFILE:raytone' "$4"; then
+    rm -f "$4"
+    echo "raytone-thor-omarchy: the Thor fan curve takes effect at the next boot"
+  fi
 }
+
+_fan_remove() {
+  if [[ -L $3 && $(readlink "$3") == "$2" && -f $1 ]]; then
+    ln -sfn "$1" "$3" && rm -f "$4" && echo "raytone-thor-omarchy: JetPack's fan curve again from the next boot"
+  fi
+}
+
+_fan_paths=(/etc/nvpower/nvfancontrol/nvfancontrol_p3834_0008_p4071_0000.conf /etc/nvpower/nvfancontrol/raytone-thor.conf
+            /etc/nvfancontrol.conf /var/lib/nvfancontrol/status)
 
 # Existing Omarchy users get the Thor layer's per-user parts (pacman hook, hidden menu entries).
 post_install() {
-  _fan_link /etc/nvpower/nvfancontrol/nvfancontrol_p3834_0008_p4071_0000.conf /etc/nvpower/nvfancontrol/raytone-thor.conf \
-    /etc/nvfancontrol.conf systemctl /var/lib/nvfancontrol/status
+  _fan_install "${_fan_paths[@]}"
   sysctl -q -p /usr/lib/sysctl.d/60-raytone-thor-userns.conf 2> /dev/null || true
   raytone-thor-user-setup
 }
 
 post_upgrade() {
   post_install
+}
+
+pre_remove() {
+  _fan_remove "${_fan_paths[@]}"
 }
