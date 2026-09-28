@@ -102,9 +102,6 @@ class MenuExtensionTests(unittest.TestCase):
                 self.assertTrue(line.lstrip().startswith("//"), line)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class ShortcutTests(unittest.TestCase):
     """SUPER + M opens Raytone Models: a marked block at the end of the user's
@@ -153,3 +150,35 @@ class ShortcutTests(unittest.TestCase):
         out = self.run_cmd()
         self.assertNotIn(self.BLOCK, out)
         self.assertIn('"Mail"', out)
+
+    def test_a_single_quoted_user_binding_wins_and_a_comment_does_not(self):
+        # From Codex's review: Lua takes either quote; a commented-out line binds nothing
+        self.bindings.write_text("o.bind('SUPER + M', 'Mail', 'thunderbird')\n")
+        self.assertNotIn(self.BLOCK, self.run_cmd())
+        self.bindings.write_text('-- o.bind("SUPER + M", "Mail", "thunderbird")\n')
+        self.assertIn(self.BLOCK, self.run_cmd())
+
+    def test_a_broken_marker_leaves_the_file_alone(self):
+        # From Codex's review: BEGIN without END must not cut the rest of the file
+        text = f'o.bind("SUPER + M", "Mail", "x")\n{self.BLOCK}\no.bind("SUPER + K", "Keep", "y")\n'
+        self.bindings.write_text(text)
+        self.assertEqual(self.run_cmd(), text)
+
+    def test_removal_gives_back_the_file_as_it_was(self):
+        original = "-- mine\n\n\n"
+        self.bindings.write_text(original)
+        self.run_cmd()
+        self.bindings.write_text('o.bind("SUPER + M", "Mail", "x")\n' + self.bindings.read_text())
+        self.assertEqual(self.run_cmd(), 'o.bind("SUPER + M", "Mail", "x")\n' + original)
+
+    def test_a_linked_bindings_file_stays_a_link(self):
+        real = self.home / "dotfiles-bindings.lua"
+        real.write_text("-- mine\n")
+        self.bindings.symlink_to(real)
+        self.run_cmd()
+        self.assertTrue(self.bindings.is_symlink())
+        self.assertIn(self.BLOCK, real.read_text())
+
+
+if __name__ == "__main__":
+    unittest.main()
