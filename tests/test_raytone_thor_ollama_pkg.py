@@ -41,6 +41,14 @@ class OllamaPackageTests(unittest.TestCase):
         sysusers = (PKG / "ollama.sysusers").read_text()
         self.assertIn("u ollama - \"Ollama\" /var/lib/ollama", sysusers)
 
+    def test_the_service_starts_after_the_gpu_driver(self):
+        # Seen on the Thor (2026-09-28): Ollama started at 13.6 s and looked for GPUs at 14.1 s, the
+        # NVIDIA kernel module (NVRM) loaded at 15.1 s from nv-load-display-modules.service, and
+        # Ollama kept to the CPU ("inference compute id=cpu") until it was restarted.
+        lines = (PKG / "ollama.service").read_text().splitlines()
+        self.assertIn("After=network-online.target nv-load-display-modules.service", lines)
+        self.assertIn("Wants=network-online.target nv-load-display-modules.service", lines)
+
     def test_the_service_user_may_use_the_gpu_memory_manager(self):
         # On the Thor, libcuda opens /dev/nvmap (root:video 0660); without the group the service
         # logged "NvRmMemInitNvmap failed: error Permission denied" and ran the model on the CPU.
