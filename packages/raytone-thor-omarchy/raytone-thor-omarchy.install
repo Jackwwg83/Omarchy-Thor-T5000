@@ -7,8 +7,7 @@ _fan_install() {
     ln -sfn "$2" "$3" || { echo "raytone-thor-omarchy: could not point $3 at $2" >&2; return 0; }
   fi
   if [[ -L $3 && $(readlink "$3") == "$2" && -f $4 ]] && ! grep -qx 'FAN1:FAN_PROFILE:raytone' "$4"; then
-    rm -f "$4"
-    echo "raytone-thor-omarchy: the Thor fan curve takes effect at the next boot"
+    rm -f "$4" && echo "raytone-thor-omarchy: the Thor fan curve takes effect at the next boot"
   fi
 }
 
