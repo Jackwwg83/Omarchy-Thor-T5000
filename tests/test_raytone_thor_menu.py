@@ -158,6 +158,16 @@ class ShortcutTests(unittest.TestCase):
         self.bindings.write_text('-- o.bind("SUPER + M", "Mail", "thunderbird")\n')
         self.assertIn(self.BLOCK, self.run_cmd())
 
+    def test_a_user_binding_over_several_lines_wins(self):
+        self.bindings.write_text('o.bind(\n  "SUPER + M", "Mail", "thunderbird"\n)\n')
+        self.assertNotIn(self.BLOCK, self.run_cmd())
+
+    def test_the_files_mode_stays(self):
+        self.bindings.write_text("-- mine\n")
+        self.bindings.chmod(0o600)
+        self.run_cmd()
+        self.assertEqual(self.bindings.stat().st_mode & 0o777, 0o600)
+
     def test_a_broken_marker_leaves_the_file_alone(self):
         # From Codex's review: BEGIN without END must not cut the rest of the file
         text = f'o.bind("SUPER + M", "Mail", "x")\n{self.BLOCK}\no.bind("SUPER + K", "Keep", "y")\n'

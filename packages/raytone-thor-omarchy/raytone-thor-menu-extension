@@ -73,7 +73,8 @@ if b:
 else:
     others = lines
 bound = re.compile(r"""\bbind\s*\(\s*(["'])SUPER\s*\+\s*M\1""")
-users = any(bound.search(l) for l in others if not l.lstrip().startswith("--"))
+# whole-line comments out, then the call may span lines (\s matches newlines)
+users = bool(bound.search("".join(l for l in others if not l.lstrip().startswith("--"))))
 if users:
     new = "".join(others)
 elif b:
